@@ -1,34 +1,52 @@
-export interface CharacterSummary {
-  name: string
-  world: string
-  job: string
-  jobDetail?: string | null
-  level: number
-  exp: number
-  expRate?: string | null
-  guild?: string | null
-  image?: string | null
-  gender?: string | null
-  createDate?: string | null
-  accessFlag?: string | null
+import type {
+  CharacterBasicDto,
+  CharacterItemEquipmentAddOptionDto,
+  CharacterItemEquipmentBaseOptionDto,
+  CharacterItemEquipmentInfoDto,
+  CharacterItemEquipmentStarforceOptionDto,
+  UnionDto,
+} from "maplestory-openapi"
+import type { OverallRankingResponseDto } from "maplestory-openapi/kms"
+
+type CharacterBasicWithRegion = CharacterBasicDto & {
   liberationQuestClear?: string | null
+  liberationQuestClearFlag?: "true" | "false"
 }
 
-export interface UnionOverviewSummary {
-  level?: number | null
-  grade?: string | null
-  artifactLevel?: number | null
-  artifactPoint?: number | null
+export type CharacterSummary = CharacterBasicWithRegion & {
+  name: CharacterBasicWithRegion["characterName"]
+  world: CharacterBasicWithRegion["worldName"]
+  job: CharacterBasicWithRegion["characterClass"]
+  jobDetail?: CharacterBasicWithRegion["characterClassLevel"] | null
+  level: CharacterBasicWithRegion["characterLevel"]
+  exp: CharacterBasicWithRegion["characterExp"]
+  expRate?: CharacterBasicWithRegion["characterExpRate"] | null
+  guild?: CharacterBasicWithRegion["characterGuildName"]
+  image?: CharacterBasicWithRegion["characterImage"] | null
+  gender?: CharacterBasicWithRegion["characterGender"] | null
+  createDate?: string | null
+  accessFlag?: CharacterBasicWithRegion["accessFlag"] | null
 }
+
+type UnionLike = UnionDto
+
+export interface UnionOverviewSummary {
+  level?: UnionLike["unionLevel"]
+  grade?: UnionLike["unionGrade"]
+  artifactLevel?: UnionLike["unionArtifactLevel"]
+  artifactPoint?: UnionLike["unionArtifactPoint"]
+}
+
+type RankingEntry = OverallRankingResponseDto["ranking"][number]
 
 export interface RankingRecord {
   date: string
-  ranking: number
-  characterName: string
-  characterLevel: number
+  ranking: RankingEntry["ranking"]
+  characterName: RankingEntry["characterName"]
+  characterLevel: RankingEntry["characterLevel"]
   expRate?: string | null
-  worldName: string
-  className: string
+  worldName: RankingEntry["worldName"]
+  className: RankingEntry["className"]
 }
 
 export interface ExperiencePoint {
@@ -38,33 +56,24 @@ export interface ExperiencePoint {
   gain: number
 }
 
-export interface EquipmentStatBlock {
-  str?: string
-  dex?: string
-  int?: string
-  luk?: string
-  maxHp?: string
-  maxMp?: string
-  attackPower?: string
-  magicPower?: string
-  armor?: string
-  speed?: string
-  jump?: string
-  bossDamage?: string
-  damage?: string
-  allStat?: string
-  criticalRate?: string
-}
+type EquipmentOption =
+  | CharacterItemEquipmentBaseOptionDto
+  | CharacterItemEquipmentAddOptionDto
+  | CharacterItemEquipmentStarforceOptionDto
+
+export type EquipmentStatBlock = Partial<Record<keyof EquipmentOption, string>>
+
+type EquipmentInfo = CharacterItemEquipmentInfoDto
 
 export interface EquipmentItemSummary {
-  itemName: string
-  icon: string | null
-  slot: string
+  itemName: EquipmentInfo["itemName"]
+  icon: EquipmentInfo["itemIcon"] | null
+  slot: EquipmentInfo["itemEquipmentSlot"]
   base: EquipmentStatBlock
   additional?: EquipmentStatBlock
   starforce?: EquipmentStatBlock
-  potential?: string[]
-  additionalPotential?: string[]
+  potential?: Array<NonNullable<EquipmentInfo["potentialOption1"]>>
+  additionalPotential?: Array<NonNullable<EquipmentInfo["additionalPotentialOption1"]>>
   isUniqueEquip?: boolean
-  scrollCount?: string
+  scrollCount?: EquipmentInfo["scrollUpgrade"]
 }

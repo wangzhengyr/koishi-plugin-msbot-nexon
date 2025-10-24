@@ -24,6 +24,12 @@ const REGION_TIMEZONES: Record<MapleRegion, string> = {
   msea: "Asia/Singapore",
 }
 
+const REGION_BASE_URLS: Record<MapleRegion, string> = {
+  tms: "https://open.api.nexon.com/maplestorytw/",
+  kms: "https://open.api.nexon.com/maplestory/",
+  msea: "https://open.api.nexon.com/maplestorysea/",
+}
+
 const STAT_KEYS = [
   "str",
   "dex",
@@ -61,6 +67,7 @@ interface DateParts {
 interface RequestMeta {
   scope: string
   params?: Record<string, any>
+  endpoint?: string
 }
 
 export class MapleClient {
@@ -70,16 +77,24 @@ export class MapleClient {
   private readonly experienceDays: number
   private readonly debug: boolean
   private readonly logger = new Logger("msbot-nexon:api")
+  private readonly baseUrl?: string
 
   constructor({ options }: MapleClientDeps) {
     this.region = options.region
     this.experienceDays = options.experienceDays
     this.debug = options.debug
     this.api = createApiInstance(options.region, options.apiKey)
-    if (options.baseUrl) {
-      const normalized = options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`
+
+    const configuredBase = options.baseUrl?.trim()
+    const resolvedBase = configuredBase && configuredBase.length ? configuredBase : REGION_BASE_URLS[this.region]
+    if (resolvedBase) {
+      const normalized = resolvedBase.endsWith("/") ? resolvedBase : `${resolvedBase}/`
       ;(this.api as any).client.defaults.baseURL = normalized
+      this.baseUrl = normalized
+    } else {
+      this.baseUrl = (this.api as any).client?.defaults?.baseURL
     }
+
     this.api.timeout = options.timeout
     if (options.cache.enabled) {
       this.cache = new InMemoryCache({
@@ -90,6 +105,7 @@ export class MapleClient {
   }
 
   async fetchCharacterInfo(name: string): Promise<CharacterInfoResult> {
+    this.logger.info('66')
     const ocid = await this.fetchOcid(name)
     const [basic, history] = await Promise.all([
       this.fetchCharacterBasic(ocid),
@@ -122,7 +138,7 @@ export class MapleClient {
       createCompositeKey(["equipment", this.region, ocid]),
       () => this.api.getCharacterItemEquipment(ocid),
       "获取装备信息失败",
-      { scope: "getCharacterItemEquipment", params: { ocid } },
+      { scope: "getCharacterItemEquipment", params: { ocid }, endpoint: "/v1/character/item-equipment" },
     )
 
     const items = dto.itemEquipment?.map(mapEquipmentItem) ?? []
@@ -158,7 +174,7 @@ export class MapleClient {
         createCompositeKey(["ranking", this.region, ocid]),
         () => api.getOverallRanking({ ocid }),
         "获取等级排名失败",
-        { scope: "getOverallRanking", params: { ocid } },
+        { scope: "getOverallRanking", params: { ocid }, endpoint: "/v1/ranking/overall" },
       )
       const records: RankingRecord[] = (response.ranking ?? []).map((entry: any) => ({
         date: formatDateString(entry.date),
@@ -195,15 +211,24 @@ export class MapleClient {
   }
 
   private async fetchOcid(name: string): Promise<string> {
-    return this.request(
-      createCompositeKey(["ocid", this.region, name]),
-      async () => {
-        const dto = await this.api.getCharacter(name)
-        return dto.ocid
-      },
-      "查询角色唯一标识失败",
-      { scope: "getCharacter", params: { name, region: this.region } },
-    )
+
+    const dto = await this.api.getCharacter(name)
+    if (this.debug) {
+      this.logger.info("2333")
+
+    }
+    return dto.ocid
+
+
+    // return this.request(
+    //   createCompositeKey(["ocid", this.region, name]),
+    //   async () => {
+    //     const dto = await this.api.getCharacter(name)
+    //     return dto.ocid
+    //   },
+    //   "查询角色唯一标识失败",
+    //   { scope: "getCharacter", params: { name, region: this.region }, endpoint: "/v1/character" },
+    // )
   }
 
   private async fetchCharacterBasic(ocid: string): Promise<CharacterSummary> {
@@ -211,7 +236,7 @@ export class MapleClient {
       createCompositeKey(["basic", this.region, ocid]),
       () => this.api.getCharacterBasic(ocid),
       "获取角色基本信息失败",
-      { scope: "getCharacterBasic", params: { ocid } },
+      { scope: "getCharacterBasic", params: { ocid }, endpoint: "/v1/character/basic" },
     )
 
     const extra = dto as Record<string, any>
@@ -240,7 +265,7 @@ export class MapleClient {
         createCompositeKey(["union", this.region, ocid]),
         () => this.api.getUnion(ocid),
         "获取联盟信息失败",
-        { scope: "getUnion", params: { ocid } },
+        { scope: "getUnion", params: { ocid }, endpoint: "/v1/character/union" },
       )
       return {
         level: dto.unionLevel ?? null,
@@ -295,7 +320,7 @@ export class MapleClient {
             }
           },
           "获取历史记录失败",
-          { scope: "getCharacterBasic:history", params: { ocid, options } },
+          { scope: "getCharacterBasic:history", params: { ocid, options }, endpoint: "/v1/character/basic" },
         ),
       )
     }
@@ -313,7 +338,8 @@ export class MapleClient {
     const execute = async () => {
       try {
         if (this.debug && meta) {
-          this.logger.debug("[%s] request params=%o", meta.scope, meta.params ?? {})
+          const url = combineUrl(this.baseUrl, meta.endpoint)
+          this.logger.debug("[%s] request url=%s params=%o", meta.scope, url, meta.params ?? {})
         }
         const data = await task()
         if (this.debug && meta) {
@@ -322,9 +348,12 @@ export class MapleClient {
         return data
       } catch (error) {
         if (this.debug && meta) {
+          const url = combineUrl(this.baseUrl, meta.endpoint)
           this.logger.warn(
-            "[%s] failed: %s",
+            "[%s] failed url=%s params=%o message=%s",
             meta.scope,
+            url,
+            meta.params ?? {},
             error instanceof Error ? error.message : String(error),
           )
         }
@@ -445,3 +474,11 @@ function summarizeForLog(payload: unknown): string {
   }
 }
 
+function combineUrl(base?: string, endpoint?: string): string {
+  if (endpoint?.startsWith("http")) return endpoint
+  const normalizedBase = base?.replace(/\/$/, "") ?? ""
+  const normalizedEndpoint = endpoint ? endpoint.replace(/^\//, "") : ""
+  if (!normalizedBase) return normalizedEndpoint || "(inline-task)"
+  if (!normalizedEndpoint) return normalizedBase
+  return `${normalizedBase}/${normalizedEndpoint}`
+}
