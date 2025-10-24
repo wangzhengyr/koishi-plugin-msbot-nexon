@@ -105,7 +105,7 @@ export class MapleClient {
   }
 
   async fetchCharacterInfo(name: string): Promise<CharacterInfoResult> {
-    this.logger.info('66')
+    this.logger.info('6623')
     const ocid = await this.fetchOcid(name)
     const [basic, history] = await Promise.all([
       this.fetchCharacterBasic(ocid),
@@ -241,7 +241,9 @@ export class MapleClient {
 
     const extra = dto as Record<string, any>
 
-    return {
+    const accessFlag = typeof extra.accessFlag === "string" ? extra.accessFlag : null
+    const summary = {
+      ...dto,
       name: dto.characterName,
       world: dto.worldName,
       gender: dto.characterGender,
@@ -253,10 +255,11 @@ export class MapleClient {
       guild: dto.characterGuildName,
       image: dto.characterImage,
       createDate: dto.characterDateCreate?.toISOString?.() ?? null,
-      accessFlag: typeof extra.accessFlag === "string" ? extra.accessFlag : null,
+      accessFlag: accessFlag === "true" || accessFlag === "false" ? accessFlag : null,
       liberationQuestClear:
         typeof extra.liberationQuestClear === "string" ? extra.liberationQuestClear : null,
-    }
+    } as CharacterSummary
+    return summary
   }
 
   private async fetchUnionOverview(ocid: string): Promise<UnionOverviewSummary | null> {

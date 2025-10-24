@@ -25,7 +25,7 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
   const infoLogger = new Logger("msbot-nexon:info")
 
   ctx
-    .command("maple info <name:text>", "查询冒险岛角色基本信息")
+    .command("maple <name:text>", "查询冒险岛角色基本信息")
     .alias("冒险信息")
     .example("/maple info 青螃蟹GM")
     .action(async ({ session }, name) => {
