@@ -57,7 +57,7 @@ export async function resolveCharacterName(
     return { ok: true, name: cached.character }
   }
 
-  await session.send('请提供要查询的角色名，例如：/maple info 青螃蟹GM')
+  await session.send('请提供要查询的角色名，例如：tms/联盟查询 青螃蟹GM')
   const answer = await session.prompt(60_000)
   if (!answer) {
     return { ok: false, reason: 'timeout' }

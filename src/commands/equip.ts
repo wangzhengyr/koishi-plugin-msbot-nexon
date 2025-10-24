@@ -1,4 +1,4 @@
-import { Context } from 'koishi'
+import { Context, Logger } from 'koishi'
 import type { Config } from '../config'
 import { getRegionLabel } from '../config'
 import { MapleClient } from '../api/client'
@@ -33,17 +33,18 @@ const STAT_LABELS: Record<string, string> = {
 export function registerEquipCommand(deps: EquipCommandDeps) {
   const { ctx, config, client, history } = deps
   const regionLabel = getRegionLabel(config.region)
+  const equipLogger = new Logger('msbot-nexon:equip')
 
   ctx
-    .command('maple equip <name:text>', '查询冒险岛角色装备')
-    .alias('冒险装备')
-    .example('/maple equip 青螃蟹GM')
+    .command('tms/联盟装备 <name:string>', '查询冒险岛角色装备')
+    .alias('tms/联盟装备栏')
+    .example('tms/联盟装备 青螃蟹GM')
     .action(async ({ session }, name) => {
       const resolved = await resolveCharacterName(session, config.region, history, name)
       if (!resolved.ok) {
         const reason = (resolved as { ok: false; reason: ResolveFailureReason }).reason
         if (reason === 'missing-name') {
-          return '请直接提供角色名，例如：/maple equip 青螃蟹GM'
+          return '请直接提供角色名，例如：tms/联盟装备 青螃蟹GM'
         }
         if (reason === 'timeout') {
           return '等待输入超时，请稍后重试。'
@@ -74,8 +75,8 @@ export function registerEquipCommand(deps: EquipCommandDeps) {
 
         return lines.join('\n')
       } catch (error) {
-        if (error instanceof Error) return error.message
-        return '查询装备信息失败'
+        equipLogger.error(error as Error, '查询装备信息接口调用失败')
+        return '查询装备信息失败，请稍后重试。'
       }
     })
 }

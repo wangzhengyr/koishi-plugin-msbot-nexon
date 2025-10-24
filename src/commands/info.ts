@@ -6,6 +6,8 @@ import type { ExperiencePoint, RankingRecord } from "../api/types"
 import { ResolveFailureReason, UserHistoryStore, resolveCharacterName } from "../data/user-history"
 import { formatAccessFlag, formatDate, formatNumber } from "../utils/format"
 import { renderCharacterReport } from "../templates/info"
+import { MapleStoryApi } from 'maplestory-openapi/tms'; // data from KMS
+
 
 interface InfoCommandDeps {
   ctx: Context
@@ -24,16 +26,28 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
   const puppeteer = getPuppeteer(ctx)
   const infoLogger = new Logger("msbot-nexon:info")
 
+
+  const apiKey = 'test_fb944efffac058eb3f7575e5109fa9cd74bb7338f84068afdd350335b1c60cc5efe8d04e6d233bd35cf2fabdeb93fb0d';
+  const api = new MapleStoryApi(apiKey);
+  ctx.command('test')
+    .action(async () => {
+      const character = await api.getCharacter('青螃蟹GM');
+      const characterBasic = await api.getCharacterBasic(character.ocid);
+      infoLogger.info(characterBasic);
+    })
+
+
+
   ctx
-    .command("maple <name:text>", "查询冒险岛角色基本信息")
-    .alias("冒险信息")
-    .example("/maple info 青螃蟹GM")
+    .command('tms/联盟查询 <name:string>', '查询冒险岛角色基本信息')
+    .alias('tms/联盟信息')
+    .example('tms/联盟查询 青螃蟹GM')
     .action(async ({ session }, name) => {
       const resolved = await resolveCharacterName(session, config.region, history, name)
       if (!resolved.ok) {
         const reason = (resolved as { ok: false; reason: ResolveFailureReason }).reason
         if (reason === "missing-name") {
-          return "请直接提供角色名，例如：/maple info 青螃蟹GM"
+          return "请直接提供角色名，例如：tms/联盟查询 青螃蟹GM"
         }
         if (reason === "timeout") {
           return "等待输入超时，请稍后重试。"
@@ -42,10 +56,8 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
       }
 
       try {
-        const [info, ranking] = await Promise.all([
-          client.fetchCharacterInfo(resolved.name),
-          client.fetchRanking(resolved.name),
-        ])
+        const info = await client.fetchCharacterInfo(resolved.name)
+        const ranking = await client.fetchRanking(resolved.name)
 
         const summary = info.summary
         const experienceStats = buildExperienceStats(info.experience)
@@ -114,8 +126,8 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
 
         return fallbackLines.join("\n")
       } catch (error) {
-        if (error instanceof Error) return error.message
-        return "查询角色信息失败"
+        infoLogger.error(error as Error, "查询角色信息接口调用失败")
+        return "查询角色信息失败，请稍后重试。"
       }
     })
 }
