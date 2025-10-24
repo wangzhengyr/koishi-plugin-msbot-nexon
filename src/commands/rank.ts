@@ -2,7 +2,7 @@ import { Context, Logger } from 'koishi'
 import type { Config } from '../config'
 import { getRegionLabel } from '../config'
 import { MapleClient } from '../api/client'
-import { ResolveFailureReason, UserHistoryStore, resolveCharacterName } from '../data/user-history'
+import { UserHistoryStore, isResolveFailure, resolveCharacterName } from '../data/user-history'
 import { formatDate, formatNumber } from '../utils/format'
 
 interface RankCommandDeps {
@@ -23,8 +23,8 @@ export function registerRankCommand(deps: RankCommandDeps) {
     .example('tms/联盟排行 青螃蟹GM')
     .action(async ({ session }, name) => {
       const resolved = await resolveCharacterName(session, config.region, history, name)
-      if (!resolved.ok) {
-        const reason = (resolved as { ok: false; reason: ResolveFailureReason }).reason
+      if (isResolveFailure(resolved)) {
+        const reason = resolved.reason
         if (reason === 'missing-name') {
           return '请直接提供角色名，例如：tms/联盟排行 青螃蟹GM'
         }
@@ -36,6 +36,9 @@ export function registerRankCommand(deps: RankCommandDeps) {
 
       try {
         const result = await client.fetchRanking(resolved.name)
+        if (result.records.length && resolved.shouldPersist && resolved.userId && resolved.platform) {
+          await history.remember(resolved.userId, resolved.platform, config.region, resolved.name)
+        }
         if (!result.available) {
           return result.message ?? '该地区暂未开放排名查询'
         }

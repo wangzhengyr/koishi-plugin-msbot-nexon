@@ -3,7 +3,7 @@ import type { Config } from "../config"
 import { getRegionLabel } from "../config"
 import { MapleClient } from "../api/client"
 import type { ExperiencePoint, RankingRecord } from "../api/types"
-import { ResolveFailureReason, UserHistoryStore, resolveCharacterName } from "../data/user-history"
+import { UserHistoryStore, isResolveFailure, resolveCharacterName } from "../data/user-history"
 import { formatAccessFlag, formatDate, formatNumber } from "../utils/format"
 import { renderCharacterReport } from "../templates/info"
 import { MapleStoryApi } from 'maplestory-openapi/tms'; // data from KMS
@@ -17,7 +17,8 @@ interface InfoCommandDeps {
 }
 
 interface PuppeteerLike {
-  render: (html: string, options?: Record<string, any>) => Promise<Buffer>
+  page?: () => Promise<any>
+  render?: (...args: any[]) => Promise<any>
 }
 
 export function registerInfoCommand(deps: InfoCommandDeps) {
@@ -44,8 +45,8 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
     .example('tms/联盟查询 青螃蟹GM')
     .action(async ({ session }, name) => {
       const resolved = await resolveCharacterName(session, config.region, history, name)
-      if (!resolved.ok) {
-        const reason = (resolved as { ok: false; reason: ResolveFailureReason }).reason
+      if (isResolveFailure(resolved)) {
+        const reason = resolved.reason
         if (reason === "missing-name") {
           return "请直接提供角色名，例如：tms/联盟查询 青螃蟹GM"
         }
@@ -58,6 +59,10 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
       try {
         const info = await client.fetchCharacterInfo(resolved.name)
         const ranking = await client.fetchRanking(resolved.name)
+
+        if (resolved.shouldPersist && resolved.userId && resolved.platform) {
+          await history.remember(resolved.userId, resolved.platform, config.region, resolved.name)
+        }
 
         const summary = info.summary
         const experienceStats = buildExperienceStats(info.experience)
@@ -81,15 +86,10 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
 
         if (puppeteer) {
           try {
-            const buffer = await puppeteer.render(html, {
-              type: "png",
-              viewport: {
-                width: 1300,
-                height: 760,
-                deviceScaleFactor: 2,
-              },
-            })
-            return h.image(`data:image/png;base64,${buffer.toString("base64")}`)
+            const buffer = await renderWithPuppeteer(puppeteer, html)
+            if (buffer) {
+              return h.image(`data:image/png;base64,${buffer.toString("base64")}`)
+            }
           } catch (error) {
             infoLogger.warn(error as Error, "生成图像失败，回退为文本输出")
           }
@@ -134,6 +134,97 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
 
 function getPuppeteer(ctx: Context): PuppeteerLike | undefined {
   return (ctx as any).puppeteer ?? undefined
+}
+
+async function renderWithPuppeteer(puppeteer: PuppeteerLike, html: string): Promise<Buffer | null> {
+  const viewport = { width: 1300, height: 760, deviceScaleFactor: 2 }
+
+  if (typeof puppeteer.page === "function") {
+    const rendered = await renderWithPage(puppeteer, html, viewport)
+    if (rendered) return rendered
+  }
+
+  if (typeof puppeteer.render !== "function") return null
+
+  try {
+    const direct = await puppeteer.render(html, {
+      type: "png",
+      viewport,
+    })
+    const normalized = ensureBuffer(direct)
+    if (normalized) return normalized
+  } catch (error) {
+    if (!(error instanceof TypeError) || !/callback is not a function/i.test(String((error as Error).message ?? error))) {
+      throw error
+    }
+  }
+
+  const buffer = await puppeteer.render(async (...args: any[]) => {
+    const pageCandidate = args[0] ?? args[1]
+    const page = extractPage(pageCandidate)
+    if (!page) {
+      throw new Error("Puppeteer 页面实例无效")
+    }
+    if (typeof page.setViewport === "function") {
+      await page.setViewport(viewport)
+    }
+    if (typeof page.setContent === "function") {
+      await page.setContent(html, { waitUntil: "networkidle0" })
+    }
+    const target = typeof page.$ === "function" ? await page.$("#app") : null
+    const shot = await (target ?? page).screenshot({ type: "png" })
+    return ensureBuffer(shot)
+  })
+
+  return ensureBuffer(buffer)
+}
+
+async function renderWithPage(puppeteer: PuppeteerLike, html: string, viewport: { width: number; height: number; deviceScaleFactor: number }) {
+  const factory = puppeteer.page
+  if (typeof factory !== "function") return null
+  const page = await factory()
+  try {
+    if (typeof page.setViewport === "function") {
+      await page.setViewport(viewport)
+    }
+    if (typeof page.setContent === "function") {
+      await page.setContent(html, { waitUntil: "networkidle0" })
+    }
+    if (typeof page.waitForSelector === "function") {
+      await page.waitForSelector("#app", { timeout: 5_000 }).catch(() => undefined)
+    }
+    const mount = typeof page.$ === "function" ? await page.$("#app") : null
+    const target = mount ?? page
+    const shot = await target.screenshot({ type: "png" })
+    return ensureBuffer(shot)
+  } finally {
+    if (typeof page.close === "function") {
+      await page.close().catch(() => undefined)
+    }
+  }
+}
+
+function extractPage(input: any): any {
+  if (!input) return undefined
+  if (typeof input === "object") {
+    if ("page" in input) {
+      return (input as { page: any }).page
+    }
+    if ("context" in input) {
+      return (input as { context: any }).context
+    }
+  }
+  return input
+}
+
+function ensureBuffer(value: any): Buffer | null {
+  if (!value) return null
+  if (Buffer.isBuffer(value)) return value
+  if (value instanceof Uint8Array) return Buffer.from(value)
+  if (typeof value === "string") {
+    return Buffer.from(value, "base64")
+  }
+  return null
 }
 
 function buildExperienceStats(series: ExperiencePoint[]) {

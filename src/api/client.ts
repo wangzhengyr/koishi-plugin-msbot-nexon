@@ -18,9 +18,25 @@ import {
   CharacterSummary,
   EquipmentItemSummary,
   EquipmentStatBlock,
+  ExperiencePoint,
   RankingRecord,
   UnionOverviewSummary,
 } from "./types"
+import { buildExperienceSeries } from "../utils/experience"
+
+const REGION_TIMEZONES: Record<MapleRegion, string> = {
+  tms: "Asia/Taipei",
+  kms: "Asia/Seoul",
+  msea: "Asia/Singapore",
+}
+
+const MILLISECONDS_PER_DAY = 86_400_000
+
+interface DateParts {
+  year: number
+  month: number
+  day: number
+}
 
 type RankingCapableApi = BaseApi & {
   getOverallRanking: (filter?: any, dateOptions?: any) => Promise<OverallRankingResponseDto>
@@ -33,14 +49,23 @@ export interface MapleClientDeps {
 export class MapleClient {
   private readonly api: BaseApi
   private readonly region: MapleRegion
+  private readonly experienceDays: number
   private readonly debug: boolean
   private readonly logger = new Logger("msbot-nexon:api")
+  private readonly dateFormatter: Intl.DateTimeFormat
 
   constructor({ options }: MapleClientDeps) {
     this.region = options.region
+    this.experienceDays = Math.max(1, options.experienceDays ?? 7)
     this.debug = options.debug
     this.api = createApiInstance(options.region, options.apiKey)
     this.api.timeout = options.timeout
+    this.dateFormatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: REGION_TIMEZONES[this.region],
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
 
     if (options.baseUrl) {
       const normalized = options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`
@@ -51,14 +76,13 @@ export class MapleClient {
   async fetchCharacterInfo(name: string): Promise<CharacterInfoResult> {
     const ocid = await this.fetchOcid(name)
     const summary = await this.fetchCharacterBasic(ocid)
+    const experience = await this.fetchExperienceHistory(ocid)
 
     let union: UnionOverviewSummary | null = null
     try {
       union = await this.fetchUnionOverview(ocid)
     } catch (error) {
-      if (this.debug) {
-        this.logger.warn(error as Error, "获取联盟信息失败，继续返回基础数据")
-      }
+      this.logger.warn(error as Error, "[getUnion] 获取联盟信息失败，继续返回基础数据 ocid=%s", ocid)
       union = null
     }
 
@@ -66,7 +90,7 @@ export class MapleClient {
       ocid,
       summary,
       union,
-      experience: [],
+      experience,
     }
   }
 
@@ -76,6 +100,7 @@ export class MapleClient {
     try {
       dto = await this.api.getCharacterItemEquipment(ocid)
     } catch (error) {
+      this.logger.warn(error as Error, "[getCharacterItemEquipment] 获取装备信息失败 ocid=%s", ocid)
       throw new Error(this.translateError(error, "获取装备信息失败"))
     }
 
@@ -135,9 +160,7 @@ export class MapleClient {
       }
     } catch (error) {
       const message = this.translateError(error, "获取排名信息失败")
-      if (this.debug) {
-        this.logger.warn(error as Error, "排名接口调用失败，ocid=%s", ocid)
-      }
+      this.logger.warn(error as Error, "[getOverallRanking] 调用失败 ocid=%s", ocid)
       return {
         ocid,
         records: [],
@@ -152,6 +175,7 @@ export class MapleClient {
       const dto = await this.api.getCharacter(name)
       return dto.ocid
     } catch (error) {
+      this.logger.warn(error as Error, "[getCharacter] 查询OCID失败 name=%s", name)
       throw new Error(this.translateError(error, "查询角色唯一标识失败"))
     }
   }
@@ -161,6 +185,7 @@ export class MapleClient {
     try {
       dto = await this.api.getCharacterBasic(ocid)
     } catch (error) {
+      this.logger.warn(error as Error, "[getCharacterBasic] 获取角色基本信息失败 ocid=%s", ocid)
       throw new Error(this.translateError(error, "获取角色基本信息失败"))
     }
 
@@ -206,6 +231,55 @@ export class MapleClient {
     }
   }
 
+  private async fetchExperienceHistory(ocid: string): Promise<ExperiencePoint[]> {
+    const snapshots: Array<{ date: string; level: number; exp: number }> = []
+    for (let offset = this.experienceDays; offset >= 0; offset--) {
+      const options = this.getDateOptions(offset)
+      try {
+        const dto = await this.api.getCharacterBasic(ocid, options as { year: number; month: number; day: number })
+        const exp = Number(dto.characterExp ?? 0)
+        if (Number.isNaN(exp)) continue
+        const level = Number(dto.characterLevel ?? 0)
+        const dateLabel = dto.date ? formatDateString(dto.date) : formatDateFromParts(options)
+        snapshots.push({
+          date: dateLabel,
+          level,
+          exp,
+        })
+      } catch (error) {
+        if (error instanceof MapleStoryApiError) {
+          const code = MapleStoryApiErrorCode[error.errorCode]
+          if (code === "OPENAPI00009" || code === "OPENAPI00008") {
+            continue
+          }
+        }
+        if (this.debug) {
+          this.logger.warn(
+            error as Error,
+            "[getCharacterBasic] 获取经验记录失败 ocid=%s date=%s-%s-%s",
+            ocid,
+            options.year,
+            options.month,
+            options.day,
+          )
+        }
+      }
+    }
+    const series = buildExperienceSeries(snapshots)
+    return series
+  }
+
+  private getDateOptions(daysAgo: number): DateParts {
+    const target = Date.now() - daysAgo * MILLISECONDS_PER_DAY
+    const formatted = this.dateFormatter.format(target)
+    const [year, month, day] = formatted.split("-").map((value) => Number(value))
+    return {
+      year,
+      month,
+      day,
+    }
+  }
+
   private translateError(error: unknown, fallback: string): string {
     if (error instanceof MapleStoryApiError) {
       const code = MapleStoryApiErrorCode[error.errorCode]
@@ -240,6 +314,10 @@ function formatDateString(value: Date | string): string {
     return value.toISOString().slice(0, 10)
   }
   return value.slice(0, 10)
+}
+
+function formatDateFromParts({ year, month, day }: DateParts): string {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
 }
 
 function mapEquipmentItem(item: any): EquipmentItemSummary {

@@ -2,7 +2,7 @@ import { Context, Logger } from 'koishi'
 import type { Config } from '../config'
 import { getRegionLabel } from '../config'
 import { MapleClient } from '../api/client'
-import { ResolveFailureReason, UserHistoryStore, resolveCharacterName } from '../data/user-history'
+import { UserHistoryStore, isResolveFailure, resolveCharacterName } from '../data/user-history'
 import { EquipmentItemSummary, EquipmentStatBlock } from '../api/types'
 
 interface EquipCommandDeps {
@@ -41,8 +41,8 @@ export function registerEquipCommand(deps: EquipCommandDeps) {
     .example('tms/联盟装备 青螃蟹GM')
     .action(async ({ session }, name) => {
       const resolved = await resolveCharacterName(session, config.region, history, name)
-      if (!resolved.ok) {
-        const reason = (resolved as { ok: false; reason: ResolveFailureReason }).reason
+      if (isResolveFailure(resolved)) {
+        const reason = resolved.reason
         if (reason === 'missing-name') {
           return '请直接提供角色名，例如：tms/联盟装备 青螃蟹GM'
         }
@@ -54,6 +54,9 @@ export function registerEquipCommand(deps: EquipCommandDeps) {
 
       try {
         const result = await client.fetchEquipments(resolved.name)
+        if (result.items.length && resolved.shouldPersist && resolved.userId && resolved.platform) {
+          await history.remember(resolved.userId, resolved.platform, config.region, resolved.name)
+        }
         if (!result.items.length) {
           return `角色：${resolved.name}（${regionLabel}）暂无可用的装备数据`
         }

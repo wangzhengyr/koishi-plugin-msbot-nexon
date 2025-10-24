@@ -1,37 +1,139 @@
-import { Context, Session } from 'koishi'
-import { MapleRegion } from '../config'
+import { Context, Logger, Session } from "koishi"
+import { MapleRegion } from "../config"
 
 export interface UserHistoryRecord {
   userId: string
+  platform: string
   region: MapleRegion
   character: string
   updatedAt: number
 }
 
+interface MapleBindingRow extends UserHistoryRecord {
+  id: number
+}
+
+declare module "koishi" {
+  interface Tables {
+    mapleBinding: MapleBindingRow
+  }
+}
+
 export class UserHistoryStore {
   private readonly store = new Map<string, UserHistoryRecord>()
+  private readonly logger = new Logger("msbot-nexon:binding")
 
-  constructor(private readonly ctx: Context, private readonly enabled: boolean) {
-    ctx.on('dispose', () => this.store.clear())
+  constructor(private readonly ctx: Context, private readonly allowBinding: boolean) {
+    ctx.on("dispose", () => this.store.clear())
+    const model = ctx.model
+    if (this.allowBinding && model) {
+      model.extend(
+        "mapleBinding",
+        {
+          id: "unsigned",
+          userId: "string",
+          platform: "string",
+          region: "string",
+          character: "string",
+          updatedAt: "unsigned",
+        },
+        {
+          primary: "id",
+          autoInc: true,
+        },
+      )
+    }
   }
 
-  remember(userId: string, region: MapleRegion, character: string) {
-    if (!this.enabled) return
-    this.store.set(userId, {
+  canPersist(): boolean {
+    return this.allowBinding && Boolean(this.ctx.database)
+  }
+
+  private key(userId: string, platform: string, region: MapleRegion) {
+    return `${platform}:${userId}:${region}`
+  }
+
+  async remember(userId: string, platform: string, region: MapleRegion, character: string) {
+    const record: UserHistoryRecord = {
       userId,
+      platform,
       region,
       character,
       updatedAt: Date.now(),
-    })
+    }
+    this.store.set(this.key(userId, platform, region), record)
+
+    if (!this.canPersist()) return
+
+    const database = this.ctx.database!
+
+    try {
+      const existing = await database.get("mapleBinding", {
+        userId,
+        platform,
+        region,
+      })
+      if (existing.length) {
+        await database.set(
+          "mapleBinding",
+          { id: existing[0].id },
+          { character, updatedAt: record.updatedAt },
+        )
+      } else {
+        await database.create("mapleBinding", record)
+      }
+    } catch (error) {
+      this.logger.warn(error as Error, "写入角色绑定失败")
+    }
   }
 
-  lookup(userId: string, region: MapleRegion): UserHistoryRecord | undefined {
-    if (!this.enabled) return undefined
-    const record = this.store.get(userId)
-    if (!record) return undefined
-    if (record.region !== region) return undefined
-    return record
+  async lookup(userId: string, platform: string, region: MapleRegion): Promise<UserHistoryRecord | undefined> {
+    const cacheKey = this.key(userId, platform, region)
+    const cached = this.store.get(cacheKey)
+    if (cached) return cached
+
+    if (!this.canPersist()) return undefined
+
+    const database = this.ctx.database!
+
+    try {
+      const rows = await database.get("mapleBinding", {
+        userId,
+        platform,
+        region,
+      })
+      const row = rows[0]
+      if (!row) return undefined
+      const record: UserHistoryRecord = {
+        userId: row.userId,
+        platform: row.platform,
+        region: row.region as MapleRegion,
+        character: row.character,
+        updatedAt: row.updatedAt,
+      }
+      this.store.set(cacheKey, record)
+      return record
+    } catch (error) {
+      this.logger.warn(error as Error, "读取角色绑定失败")
+      return undefined
+    }
   }
+}
+
+export type ResolveFailureReason = "missing-name" | "timeout" | "empty-name"
+
+export interface ResolveSuccessResult {
+  ok: true
+  name: string
+  shouldPersist: boolean
+  userId?: string
+  platform?: string
+}
+
+export type ResolveResult = ResolveSuccessResult | { ok: false; reason: ResolveFailureReason }
+
+export function isResolveFailure(result: ResolveResult): result is { ok: false; reason: ResolveFailureReason } {
+  return !result.ok
 }
 
 export async function resolveCharacterName(
@@ -39,37 +141,52 @@ export async function resolveCharacterName(
   region: MapleRegion,
   store: UserHistoryStore,
   explicitName?: string,
-): Promise<{ ok: true; name: string } | { ok: false; reason: ResolveFailureReason }> {
+): Promise<ResolveResult> {
   const normalized = explicitName?.trim()
+  const userId = session?.userId
+  const platform = session?.platform
+
   if (normalized) {
-    if (session?.userId) {
-      store.remember(session.userId, region, normalized)
+    return {
+      ok: true,
+      name: normalized,
+      shouldPersist: Boolean(userId && platform && store.canPersist()),
+      userId,
+      platform,
     }
-    return { ok: true, name: normalized }
   }
 
-  if (!session || !session.userId) {
-    return { ok: false, reason: 'missing-name' }
+  if (!session || !userId || !platform) {
+    return { ok: false, reason: "missing-name" }
   }
 
-  const cached = store.lookup(session.userId, region)
-  if (cached) {
-    return { ok: true, name: cached.character }
+  const binding = await store.lookup(userId, platform, region)
+  if (binding) {
+    return {
+      ok: true,
+      name: binding.character,
+      shouldPersist: false,
+      userId,
+      platform,
+    }
   }
 
-  await session.send('请提供要查询的角色名，例如：tms/联盟查询 青螃蟹GM')
+  await session.send("请提供要查询的角色名，例如：tms/联盟查询 青螃蟹GM")
   const answer = await session.prompt(60_000)
   if (!answer) {
-    return { ok: false, reason: 'timeout' }
+    return { ok: false, reason: "timeout" }
   }
 
   const candidate = answer.trim()
   if (!candidate) {
-    return { ok: false, reason: 'empty-name' }
+    return { ok: false, reason: "empty-name" }
   }
 
-  store.remember(session.userId, region, candidate)
-  return { ok: true, name: candidate }
+  return {
+    ok: true,
+    name: candidate,
+    shouldPersist: store.canPersist(),
+    userId,
+    platform,
+  }
 }
-
-export type ResolveFailureReason = 'missing-name' | 'timeout' | 'empty-name'

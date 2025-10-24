@@ -256,7 +256,8 @@ export function renderCharacterReport(props: CharacterReportProps): string {
 </style>
 </head>
 <body>
-  <div class="report">
+  <div id="app">
+    <div class="report">
     <section class="card summary-card">
       <div class="avatar-box">
         ${avatar}
@@ -304,6 +305,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
       ${expDetails}
     </div>
   </section>
+  </div>
 </body>
 </html>`
 }
