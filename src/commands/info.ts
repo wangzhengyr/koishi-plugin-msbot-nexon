@@ -1,4 +1,4 @@
-import { Context, Logger, h } from "koishi"
+ï»¿import { Context, Logger, h } from "koishi"
 import type { Config } from "../config"
 import { getRegionLabel } from "../config"
 import { MapleClient } from "../api/client"
@@ -22,23 +22,23 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
   const { ctx, config, client, history } = deps
   const regionLabel = getRegionLabel(config.region)
   const puppeteer = getPuppeteer(ctx)
-  const infoLogger = new Logger('msbot-nexon:info')
+  const infoLogger = new Logger("msbot-nexon:info")
 
   ctx
-    .command("maple info <name:text>", "²éÑ¯Ã°ÏÕµº½ÇÉ«»ù±¾ĞÅÏ¢")
-    .alias("Ã°ÏÕĞÅÏ¢")
-    .example("/maple info Çàó¦Ğ·GM")
+    .command("maple info <name:text>", "æŸ¥è¯¢å†’é™©å²›è§’è‰²åŸºæœ¬ä¿¡æ¯")
+    .alias("å†’é™©ä¿¡æ¯")
+    .example("/maple info é’èƒèŸ¹GM")
     .action(async ({ session }, name) => {
       const resolved = await resolveCharacterName(session, config.region, history, name)
       if (!resolved.ok) {
         const reason = (resolved as { ok: false; reason: ResolveFailureReason }).reason
         if (reason === "missing-name") {
-          return "ÇëÖ±½ÓÌá¹©½ÇÉ«Ãû£¬ÀıÈç£º/maple info Çàó¦Ğ·GM"
+          return "è¯·ç›´æ¥æä¾›è§’è‰²åï¼Œä¾‹å¦‚ï¼š/maple info é’èƒèŸ¹GM"
         }
         if (reason === "timeout") {
-          return "µÈ´ıÊäÈë³¬Ê±£¬ÇëÉÔºóÖØÊÔ¡£"
+          return "ç­‰å¾…è¾“å…¥è¶…æ—¶ï¼Œè¯·ç¨åé‡è¯•ã€‚"
         }
-        return "½ÇÉ«Ãû²»ÄÜÎª¿Õ£¬ÇëÖØĞÂÊäÈë¡£"
+        return "è§’è‰²åä¸èƒ½ä¸ºç©ºï¼Œè¯·é‡æ–°è¾“å…¥ã€‚"
       }
 
       try {
@@ -79,43 +79,43 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
             })
             return h.image(`data:image/png;base64,${buffer.toString("base64")}`)
           } catch (error) {
-            infoLogger.warn(error as Error, 'Éú³ÉÍ¼ÏñÊ§°Ü£¬»ØÍËÎªÎÄ±¾Êä³ö')
+            infoLogger.warn(error as Error, "ç”Ÿæˆå›¾åƒå¤±è´¥ï¼Œå›é€€ä¸ºæ–‡æœ¬è¾“å‡º")
           }
         }
 
         const unionLine = info.union
-          ? `ÁªÃË£ºLv.${info.union.level ?? "--"} £ü ¶ÎÎ»£º${info.union.grade ?? "--"} £ü ½á¾§µã£º${formatNumber(
+          ? `è”ç›Ÿï¼šLv.${info.union.level ?? "--"} ï½œ æ®µä½ï¼š${info.union.grade ?? "--"} ï½œ ç»“æ™¶ç‚¹ï¼š${formatNumber(
               info.union.artifactPoint ?? 0,
             )}`
-          : "ÁªÃË£ºÔİÎŞ¼ÇÂ¼£¨¹Ù·½Î´·µ»ØÊı¾İ£©"
+          : "è”ç›Ÿï¼šæš‚æ— è®°å½•ï¼ˆå®˜æ–¹æœªè¿”å›æ•°æ®ï¼‰"
 
         const fallbackLines = [
-          `½ÇÉ«£º${summary.name}£¨${regionLabel}£©`,
-          `µÈ¼¶£º${summary.level} £ü Ö°Òµ£º${summary.job}${summary.jobDetail ? ` ${summary.jobDetail}` : ""}`,
+          `è§’è‰²ï¼š${summary.name}ï¼ˆ${regionLabel}ï¼‰`,
+          `ç­‰çº§ï¼š${summary.level} ï½œ èŒä¸šï¼š${summary.job}${summary.jobDetail ? ` ${summary.jobDetail}` : ""}`,
           unionLine,
-          `¹«»á£º${summary.guild ?? "ÎŞ¹«»á"} £ü ${formatAccessFlag(summary.accessFlag)}`,
-          `¾­Ñé£º${formatNumber(summary.exp)} £ü ½ø¶È£º${summary.expRate ?? "--"}`,
-          `´´½Ç£º${formatDate(summary.createDate)} £ü ½â·ÅÈÎÎñ£º${
-            summary.liberationQuestClear === "1" ? "ÒÑÍê³É" : "Î´Íê³É"
+          `å…¬ä¼šï¼š${summary.guild ?? "æ— å…¬ä¼š"} ï½œ ${formatAccessFlag(summary.accessFlag)}`,
+          `ç»éªŒï¼š${formatNumber(summary.exp)} ï½œ è¿›åº¦ï¼š${summary.expRate ?? "--"}`,
+          `åˆ›è§’ï¼š${formatDate(summary.createDate)} ï½œ è§£æ”¾ä»»åŠ¡ï¼š${
+            summary.liberationQuestClear === "1" ? "å·²å®Œæˆ" : "æœªå®Œæˆ"
           }`,
         ]
 
         if (info.experience.length) {
           const recent = info.experience.slice(-Math.min(info.experience.length, 5))
           const rows = recent.map(
-            (item) => `¡¤ ${item.date} £ü Lv.${item.level} £ü ¾­ÑéÔöÁ¿ +${formatNumber(item.gain)}`,
+            (item) => `Â· ${item.date} ï½œ Lv.${item.level} ï½œ ç»éªŒå¢é‡ +${formatNumber(item.gain)}`,
           )
-          fallbackLines.push(`¾­ÑéÇ÷ÊÆ£¨×î½ü ${recent.length} Ìì£©£º`, ...rows)
+          fallbackLines.push(`ç»éªŒè¶‹åŠ¿ï¼ˆæœ€è¿‘ ${recent.length} å¤©ï¼‰ï¼š`, ...rows)
         }
 
         if (!ranking.available && ranking.message) {
-          fallbackLines.push(`ÅÅÃûÌáÊ¾£º${ranking.message}`)
+          fallbackLines.push(`æ’åæç¤ºï¼š${ranking.message}`)
         }
 
         return fallbackLines.join("\n")
       } catch (error) {
         if (error instanceof Error) return error.message
-        return "²éÑ¯½ÇÉ«ĞÅÏ¢Ê§°Ü"
+        return "æŸ¥è¯¢è§’è‰²ä¿¡æ¯å¤±è´¥"
       }
     })
 }
@@ -162,6 +162,3 @@ function buildRankingNeighbors(records: RankingRecord[], targetName: string, win
 function normalizeName(input: string) {
   return input.trim().toLowerCase()
 }
-
-
-
