@@ -16,6 +16,7 @@ export interface ServiceOptions {
   experienceDays: number
   cache: CacheOptions
   allowBinding: boolean
+  debug: boolean
 }
 
 export type Config = ServiceOptions
@@ -69,6 +70,9 @@ export const Config: Schema<Config> = Schema.object({
   allowBinding: Schema.boolean()
     .default(true)
     .description('允许用户绑定默认角色，便于免参数查询'),
+  debug: Schema.boolean()
+    .default(false)
+    .description('输出详细调试日志（包含请求参数、响应片段）'),
 })
 
 export function normalizeConfig(config: Config): Config {

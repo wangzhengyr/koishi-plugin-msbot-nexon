@@ -1,9 +1,11 @@
-import { Context } from 'koishi'
-import type { Config } from '../config'
-import { getRegionLabel } from '../config'
-import { MapleClient } from '../api/client'
-import { ResolveFailureReason, UserHistoryStore, resolveCharacterName } from '../data/user-history'
-import { formatAccessFlag, formatDate, formatNumber } from '../utils/format'
+import { Context, Logger, h } from "koishi"
+import type { Config } from "../config"
+import { getRegionLabel } from "../config"
+import { MapleClient } from "../api/client"
+import type { ExperiencePoint, RankingRecord } from "../api/types"
+import { ResolveFailureReason, UserHistoryStore, resolveCharacterName } from "../data/user-history"
+import { formatAccessFlag, formatDate, formatNumber } from "../utils/format"
+import { renderCharacterReport } from "../templates/info"
 
 interface InfoCommandDeps {
   ctx: Context
@@ -12,61 +14,154 @@ interface InfoCommandDeps {
   history: UserHistoryStore
 }
 
+interface PuppeteerLike {
+  render: (html: string, options?: Record<string, any>) => Promise<Buffer>
+}
+
 export function registerInfoCommand(deps: InfoCommandDeps) {
   const { ctx, config, client, history } = deps
   const regionLabel = getRegionLabel(config.region)
+  const puppeteer = getPuppeteer(ctx)
+  const infoLogger = new Logger('msbot-nexon:info')
 
   ctx
-    .command('maple info <name:text>', 'Êü•ËØ¢ÂÜíÈô©Â≤õËßíËâ≤Âü∫Êú¨‰ø°ÊÅØ')
-    .alias('ÂÜíÈô©‰ø°ÊÅØ')
-    .example('/maple info ÈùíËûÉËüπGM')
+    .command("maple info <name:text>", "≤È—Ø√∞œ’µ∫Ω«…´ª˘±æ–≈œ¢")
+    .alias("√∞œ’–≈œ¢")
+    .example("/maple info «‡Û¶–∑GM")
     .action(async ({ session }, name) => {
       const resolved = await resolveCharacterName(session, config.region, history, name)
       if (!resolved.ok) {
         const reason = (resolved as { ok: false; reason: ResolveFailureReason }).reason
-        if (reason === 'missing-name') {
-          return 'ËØ∑Áõ¥Êé•Êèê‰æõËßíËâ≤ÂêçÔºå‰æãÂ¶ÇÔºö/maple info ÈùíËûÉËüπGM'
+        if (reason === "missing-name") {
+          return "«Î÷±Ω”Ã·π©Ω«…´√˚£¨¿˝»Á£∫/maple info «‡Û¶–∑GM"
         }
-        if (reason === 'timeout') {
-          return 'Á≠âÂæÖËæìÂÖ•Ë∂ÖÊó∂ÔºåËØ∑Á®çÂêéÈáçËØï„ÄÇ'
+        if (reason === "timeout") {
+          return "µ»¥˝ ‰»Î≥¨ ±£¨«Î…‘∫Û÷ÿ ‘°£"
         }
-        return 'ËßíËâ≤Âêç‰∏çËÉΩ‰∏∫Á©∫ÔºåËØ∑ÈáçÊñ∞ËæìÂÖ•„ÄÇ'
+        return "Ω«…´√˚≤ªƒ‹Œ™ø’£¨«Î÷ÿ–¬ ‰»Î°£"
       }
 
       try {
-        const info = await client.fetchCharacterInfo(resolved.name)
+        const [info, ranking] = await Promise.all([
+          client.fetchCharacterInfo(resolved.name),
+          client.fetchRanking(resolved.name),
+        ])
+
         const summary = info.summary
+        const experienceStats = buildExperienceStats(info.experience)
+        const rankingNeighbors = buildRankingNeighbors(ranking.records, summary.name, 6)
+        const rankingDate = ranking.records[0]?.date
 
-        const nameLine = `ËßíËâ≤Ôºö${summary.name}Ôºà${regionLabel}Ôºâ`
-        const jobDetail = summary.jobDetail ? ` ${summary.jobDetail}` : ''
-        const jobLine = `Á≠âÁ∫ßÔºö${summary.level} ÔΩú ËÅå‰∏öÔºö${summary.job}${jobDetail}`
-        const guildLine = `ÂÖ¨‰ºöÔºö${summary.guild ?? 'Êó†ÂÖ¨‰ºö'} ÔΩú ${formatAccessFlag(summary.accessFlag)}`
-        const expLine = `ÁªèÈ™åÔºö${formatNumber(summary.exp)} ÔΩú ËøõÂ∫¶Ôºö${summary.expRate ?? '--'}`
-        const createLine = `ÂàõËßíÔºö${formatDate(summary.createDate)} ÔΩú Ëß£Êîæ‰ªªÂä°Ôºö${
-          summary.liberationQuestClear === '1' ? 'Â∑≤ÂÆåÊàê' : 'Êú™ÂÆåÊàê'
-        }`
+        const html = renderCharacterReport({
+          summary,
+          union: info.union,
+          experience: info.experience,
+          experienceStats,
+          ranking: {
+            available: ranking.available,
+            neighbors: rankingNeighbors,
+            message: ranking.message,
+            date: rankingDate,
+            characterName: summary.name,
+          },
+          regionLabel,
+        })
 
-        const unionLine = info.union
-          ? `ËÅîÁõüÔºöLv.${info.union.level ?? '--'} ÔΩú ÊÆµ‰ΩçÔºö${info.union.grade ?? '--'} ÔΩú ÁªìÊô∂ÁÇπÔºö${formatNumber(
-              info.union.artifactPoint ?? 0,
-            )}`
-          : 'ËÅîÁõüÔºöÊöÇÊó†ËÆ∞ÂΩïÔºàÂÆòÊñπÊú™ËøîÂõûÊï∞ÊçÆÔºâ'
-
-        let experienceBlock = ''
-        if (info.experience && info.experience.length) {
-          const recent = info.experience.slice(-Math.min(info.experience.length, 5))
-          const rows = recent.map(
-            (item) => `¬∑ ${item.date} ÔΩú Lv.${item.level} ÔΩú ÁªèÈ™åÂ¢ûÈáè +${formatNumber(item.gain)}`,
-          )
-          experienceBlock = `ÁªèÈ™åË∂ãÂäøÔºàÊúÄËøë ${recent.length} Â§©ÔºâÔºö\n${rows.join('\n')}`
+        if (puppeteer) {
+          try {
+            const buffer = await puppeteer.render(html, {
+              type: "png",
+              viewport: {
+                width: 1300,
+                height: 760,
+                deviceScaleFactor: 2,
+              },
+            })
+            return h.image(`data:image/png;base64,${buffer.toString("base64")}`)
+          } catch (error) {
+            infoLogger.warn(error as Error, '…˙≥…ÕºœÒ ß∞‹£¨ªÿÕÀŒ™Œƒ±æ ‰≥ˆ')
+          }
         }
 
-        return [nameLine, jobLine, unionLine, guildLine, expLine, createLine, experienceBlock]
-          .filter(Boolean)
-          .join('\n')
+        const unionLine = info.union
+          ? `¡™√À£∫Lv.${info.union.level ?? "--"} £¸ ∂ŒŒª£∫${info.union.grade ?? "--"} £¸ Ω·æßµ„£∫${formatNumber(
+              info.union.artifactPoint ?? 0,
+            )}`
+          : "¡™√À£∫‘›Œﬁº«¬º£®πŸ∑ΩŒ¥∑µªÿ ˝æ›£©"
+
+        const fallbackLines = [
+          `Ω«…´£∫${summary.name}£®${regionLabel}£©`,
+          `µ»º∂£∫${summary.level} £¸ ÷∞“µ£∫${summary.job}${summary.jobDetail ? ` ${summary.jobDetail}` : ""}`,
+          unionLine,
+          `π´ª·£∫${summary.guild ?? "Œﬁπ´ª·"} £¸ ${formatAccessFlag(summary.accessFlag)}`,
+          `æ≠—È£∫${formatNumber(summary.exp)} £¸ Ω¯∂»£∫${summary.expRate ?? "--"}`,
+          `¥¥Ω«£∫${formatDate(summary.createDate)} £¸ Ω‚∑≈»ŒŒÒ£∫${
+            summary.liberationQuestClear === "1" ? "“—ÕÍ≥…" : "Œ¥ÕÍ≥…"
+          }`,
+        ]
+
+        if (info.experience.length) {
+          const recent = info.experience.slice(-Math.min(info.experience.length, 5))
+          const rows = recent.map(
+            (item) => `°§ ${item.date} £¸ Lv.${item.level} £¸ æ≠—È‘ˆ¡ø +${formatNumber(item.gain)}`,
+          )
+          fallbackLines.push(`æ≠—È«˜ ∆£®◊ÓΩ¸ ${recent.length} ÃÏ£©£∫`, ...rows)
+        }
+
+        if (!ranking.available && ranking.message) {
+          fallbackLines.push(`≈≈√˚Ã· æ£∫${ranking.message}`)
+        }
+
+        return fallbackLines.join("\n")
       } catch (error) {
         if (error instanceof Error) return error.message
-        return 'Êü•ËØ¢ËßíËâ≤‰ø°ÊÅØÂ§±Ë¥•'
+        return "≤È—ØΩ«…´–≈œ¢ ß∞‹"
       }
     })
 }
+
+function getPuppeteer(ctx: Context): PuppeteerLike | undefined {
+  return (ctx as any).puppeteer ?? undefined
+}
+
+function buildExperienceStats(series: ExperiencePoint[]) {
+  const sorted = [...series].sort((a, b) => a.date.localeCompare(b.date))
+  const last7 = sumRecent(sorted, 7)
+  const last14 = sumRecent(sorted, 14)
+  return {
+    total7: last7.total,
+    avg7: last7.count ? last7.total / last7.count : 0,
+    total14: last14.total,
+    avg14: last14.count ? last14.total / last14.count : 0,
+  }
+}
+
+function sumRecent(series: ExperiencePoint[], span: number) {
+  if (!series.length) return { total: 0, count: 0 }
+  const slice = series.slice(-Math.min(series.length, span))
+  const total = slice.reduce((acc, item) => acc + (item.gain ?? 0), 0)
+  return { total, count: slice.length }
+}
+
+function buildRankingNeighbors(records: RankingRecord[], targetName: string, windowSize: number) {
+  if (!records.length) return []
+  const latestDate = records[0].date
+  const sameDate = records.filter((record) => record.date === latestDate)
+  const sorted = [...sameDate].sort((a, b) => a.ranking - b.ranking)
+  const normalized = normalizeName(targetName)
+  const index = sorted.findIndex((record) => normalizeName(record.characterName) === normalized)
+  if (index === -1) {
+    return sorted.slice(0, Math.min(sorted.length, windowSize))
+  }
+  const half = Math.floor(windowSize / 2)
+  const start = Math.max(0, index - half)
+  const end = Math.min(sorted.length, start + windowSize)
+  return sorted.slice(start, end)
+}
+
+function normalizeName(input: string) {
+  return input.trim().toLowerCase()
+}
+
+
+

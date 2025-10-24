@@ -24,7 +24,9 @@ export interface UnionOverviewSummary {
 export interface RankingRecord {
   date: string
   ranking: number
+  characterName: string
   characterLevel: number
+  expRate?: string | null
   worldName: string
   className: string
 }

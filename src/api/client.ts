@@ -1,12 +1,13 @@
-import { MapleStoryApi as BaseApi, MapleStoryApiError, MapleStoryApiErrorCode } from 'maplestory-openapi'
-import { MapleStoryApi as TmsApi } from 'maplestory-openapi/tms'
-import { MapleStoryApi as KmsApi, OverallRankingResponseDto } from 'maplestory-openapi/kms'
-import { MapleStoryApi as MseaApi } from 'maplestory-openapi/msea'
-import { MapleRegion, ServiceOptions } from '../config'
-import { InMemoryCache, createCompositeKey } from './cache'
-import { CharacterInfoResult } from '../entities/character'
-import { CharacterEquipment } from '../entities/equipment'
-import { CharacterRanking } from '../entities/ranking'
+﻿import { MapleStoryApi as BaseApi, MapleStoryApiError, MapleStoryApiErrorCode } from "maplestory-openapi"
+import { MapleStoryApi as TmsApi } from "maplestory-openapi/tms"
+import { MapleStoryApi as KmsApi, OverallRankingResponseDto } from "maplestory-openapi/kms"
+import { MapleStoryApi as MseaApi } from "maplestory-openapi/msea"
+import { Logger } from "koishi"
+import { MapleRegion, ServiceOptions } from "../config"
+import { InMemoryCache, createCompositeKey } from "./cache"
+import { CharacterInfoResult } from "../entities/character"
+import { CharacterEquipment } from "../entities/equipment"
+import { CharacterRanking } from "../entities/ranking"
 import {
   CharacterSummary,
   EquipmentItemSummary,
@@ -14,31 +15,31 @@ import {
   ExperiencePoint,
   RankingRecord,
   UnionOverviewSummary,
-} from './types'
-import { buildExperienceSeries } from '../utils/experience'
+} from "./types"
+import { buildExperienceSeries } from "../utils/experience"
 
 const REGION_TIMEZONES: Record<MapleRegion, string> = {
-  tms: 'Asia/Taipei',
-  kms: 'Asia/Seoul',
-  msea: 'Asia/Singapore',
+  tms: "Asia/Taipei",
+  kms: "Asia/Seoul",
+  msea: "Asia/Singapore",
 }
 
 const STAT_KEYS = [
-  'str',
-  'dex',
-  'int',
-  'luk',
-  'maxHp',
-  'maxMp',
-  'attackPower',
-  'magicPower',
-  'armor',
-  'speed',
-  'jump',
-  'bossDamage',
-  'damage',
-  'allStat',
-  'criticalRate',
+  "str",
+  "dex",
+  "int",
+  "luk",
+  "maxHp",
+  "maxMp",
+  "attackPower",
+  "magicPower",
+  "armor",
+  "speed",
+  "jump",
+  "bossDamage",
+  "damage",
+  "allStat",
+  "criticalRate",
 ] as const
 
 const MILLISECONDS_PER_DAY = 86_400_000
@@ -57,18 +58,26 @@ interface DateParts {
   day: number
 }
 
+interface RequestMeta {
+  scope: string
+  params?: Record<string, any>
+}
+
 export class MapleClient {
   private readonly api: BaseApi
   private readonly cache?: InMemoryCache<any>
   private readonly region: MapleRegion
   private readonly experienceDays: number
+  private readonly debug: boolean
+  private readonly logger = new Logger("msbot-nexon:api")
 
   constructor({ options }: MapleClientDeps) {
     this.region = options.region
     this.experienceDays = options.experienceDays
+    this.debug = options.debug
     this.api = createApiInstance(options.region, options.apiKey)
     if (options.baseUrl) {
-      const normalized = options.baseUrl.endsWith('/') ? options.baseUrl : `${options.baseUrl}/`
+      const normalized = options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`
       ;(this.api as any).client.defaults.baseURL = normalized
     }
     this.api.timeout = options.timeout
@@ -90,11 +99,14 @@ export class MapleClient {
     let union: UnionOverviewSummary | null = null
     try {
       union = await this.fetchUnionOverview(ocid)
-    } catch {
+    } catch (error) {
+      if (this.debug) {
+        this.logger.debug(error as Error, "获取联盟信息失败，继续返回基础数据")
+      }
       union = null
     }
 
-    const experience = history.length > 1 ? buildExperienceSeries(history) : []
+    const experience = buildExperienceSeries(history)
 
     return {
       ocid,
@@ -107,9 +119,10 @@ export class MapleClient {
   async fetchEquipments(name: string): Promise<CharacterEquipment> {
     const ocid = await this.fetchOcid(name)
     const dto = await this.request(
-      createCompositeKey(['equipment', this.region, ocid]),
+      createCompositeKey(["equipment", this.region, ocid]),
       () => this.api.getCharacterItemEquipment(ocid),
-      '获取装备信息失败',
+      "获取装备信息失败",
+      { scope: "getCharacterItemEquipment", params: { ocid } },
     )
 
     const items = dto.itemEquipment?.map(mapEquipmentItem) ?? []
@@ -119,7 +132,7 @@ export class MapleClient {
       items,
       title: dto.title
         ? {
-            name: dto.title.titleName ?? '',
+            name: dto.title.titleName ?? "",
             icon: dto.title.titleIcon,
             description: dto.title.titleDescription ?? undefined,
           }
@@ -136,22 +149,25 @@ export class MapleClient {
         ocid,
         records: [],
         available: false,
-        message: '当前地区暂不提供官方排名接口',
+        message: "当前地区暂不提供官方排名接口",
       }
     }
 
     try {
       const response = await this.request<OverallRankingResponseDto>(
-        createCompositeKey(['ranking', this.region, ocid]),
+        createCompositeKey(["ranking", this.region, ocid]),
         () => api.getOverallRanking({ ocid }),
-        '获取等级排名失败',
+        "获取等级排名失败",
+        { scope: "getOverallRanking", params: { ocid } },
       )
       const records: RankingRecord[] = (response.ranking ?? []).map((entry: any) => ({
         date: formatDateString(entry.date),
         ranking: entry.ranking,
+        characterName: entry.characterName,
         characterLevel: entry.characterLevel,
+        expRate: entry.characterExpRate,
         worldName: entry.worldName,
-        className: entry.className ?? entry.subClassName ?? '',
+        className: entry.className ?? entry.subClassName ?? "",
       }))
 
       if (!records.length) {
@@ -159,7 +175,7 @@ export class MapleClient {
           ocid,
           records,
           available: false,
-          message: '未找到角色在当前日期的排名记录',
+          message: "未找到角色在当前日期的排名记录",
         }
       }
 
@@ -173,27 +189,29 @@ export class MapleClient {
         ocid,
         records: [],
         available: false,
-        message: this.translateError(error, '获取排名信息失败'),
+        message: this.translateError(error, "获取排名信息失败"),
       }
     }
   }
 
   private async fetchOcid(name: string): Promise<string> {
     return this.request(
-      createCompositeKey(['ocid', this.region, name]),
+      createCompositeKey(["ocid", this.region, name]),
       async () => {
         const dto = await this.api.getCharacter(name)
         return dto.ocid
       },
-      '查询角色唯一标识失败',
+      "查询角色唯一标识失败",
+      { scope: "getCharacter", params: { name, region: this.region } },
     )
   }
 
   private async fetchCharacterBasic(ocid: string): Promise<CharacterSummary> {
     const dto = await this.request(
-      createCompositeKey(['basic', this.region, ocid]),
+      createCompositeKey(["basic", this.region, ocid]),
       () => this.api.getCharacterBasic(ocid),
-      '获取角色基本信息失败',
+      "获取角色基本信息失败",
+      { scope: "getCharacterBasic", params: { ocid } },
     )
 
     const extra = dto as Record<string, any>
@@ -210,18 +228,19 @@ export class MapleClient {
       guild: dto.characterGuildName,
       image: dto.characterImage,
       createDate: dto.characterDateCreate?.toISOString?.() ?? null,
-      accessFlag: typeof extra.accessFlag === 'string' ? extra.accessFlag : null,
+      accessFlag: typeof extra.accessFlag === "string" ? extra.accessFlag : null,
       liberationQuestClear:
-        typeof extra.liberationQuestClear === 'string' ? extra.liberationQuestClear : null,
+        typeof extra.liberationQuestClear === "string" ? extra.liberationQuestClear : null,
     }
   }
 
   private async fetchUnionOverview(ocid: string): Promise<UnionOverviewSummary | null> {
     try {
       const dto = await this.request(
-        createCompositeKey(['union', this.region, ocid]),
+        createCompositeKey(["union", this.region, ocid]),
         () => this.api.getUnion(ocid),
-        '获取联盟信息失败',
+        "获取联盟信息失败",
+        { scope: "getUnion", params: { ocid } },
       )
       return {
         level: dto.unionLevel ?? null,
@@ -230,8 +249,8 @@ export class MapleClient {
         artifactPoint: dto.unionArtifactPoint ?? null,
       }
     } catch (error) {
-      const message = this.translateError(error, '获取联盟信息失败')
-      if (message.includes('OPENAPI00009')) {
+      const message = this.translateError(error, "获取联盟信息失败")
+      if (message.includes("OPENAPI00009")) {
         return null
       }
       throw new Error(message)
@@ -245,7 +264,7 @@ export class MapleClient {
     for (let offset = 0; offset < days; offset++) {
       const options = toDateOptions(formatter, -offset)
       const cacheKey = createCompositeKey([
-        'history',
+        "history",
         this.region,
         ocid,
         options.year,
@@ -254,25 +273,30 @@ export class MapleClient {
       ])
 
       tasks.push(
-        this.request(cacheKey, async () => {
-          try {
-            const dto = await this.api.getCharacterBasic(ocid, options)
-            return {
-              date: formatDateString(dto.date ?? fromDateOptions(options)),
-              level: dto.characterLevel,
-              exp: dto.characterExp,
-              gain: 0,
-            }
-          } catch (error) {
-            if (error instanceof MapleStoryApiError) {
-              const code = MapleStoryApiErrorCode[error.errorCode]
-              if (code === 'OPENAPI00009' || code === 'OPENAPI00008') {
-                return null
+        this.request(
+          cacheKey,
+          async () => {
+            try {
+              const dto = await this.api.getCharacterBasic(ocid, options)
+              return {
+                date: formatDateString(dto.date ?? fromDateOptions(options)),
+                level: dto.characterLevel,
+                exp: dto.characterExp,
+                gain: 0,
               }
+            } catch (error) {
+              if (error instanceof MapleStoryApiError) {
+                const code = MapleStoryApiErrorCode[error.errorCode]
+                if (code === "OPENAPI00009" || code === "OPENAPI00008") {
+                  return null
+                }
+              }
+              throw error
             }
-            throw error
-          }
-        }, '获取历史记录失败'),
+          },
+          "获取历史记录失败",
+          { scope: "getCharacterBasic:history", params: { ocid, options } },
+        ),
       )
     }
 
@@ -280,11 +304,30 @@ export class MapleClient {
     return snapshots
   }
 
-  private async request<T>(cacheKey: string, task: () => Promise<T>, fallback: string): Promise<T> {
+  private async request<T>(
+    cacheKey: string,
+    task: () => Promise<T>,
+    fallback: string,
+    meta?: RequestMeta,
+  ): Promise<T> {
     const execute = async () => {
       try {
-        return await task()
+        if (this.debug && meta) {
+          this.logger.debug("[%s] request params=%o", meta.scope, meta.params ?? {})
+        }
+        const data = await task()
+        if (this.debug && meta) {
+          this.logger.debug("[%s] success payload=%s", meta.scope, summarizeForLog(data))
+        }
+        return data
       } catch (error) {
+        if (this.debug && meta) {
+          this.logger.warn(
+            "[%s] failed: %s",
+            meta.scope,
+            error instanceof Error ? error.message : String(error),
+          )
+        }
         throw new Error(this.translateError(error, fallback))
       }
     }
@@ -305,11 +348,11 @@ export class MapleClient {
 
 function createApiInstance(region: MapleRegion, apiKey: string): BaseApi {
   switch (region) {
-    case 'tms':
+    case "tms":
       return new TmsApi(apiKey)
-    case 'kms':
+    case "kms":
       return new KmsApi(apiKey)
-    case 'msea':
+    case "msea":
       return new MseaApi(apiKey)
     default:
       throw new Error(`暂不支持的地区：${region}`)
@@ -317,15 +360,15 @@ function createApiInstance(region: MapleRegion, apiKey: string): BaseApi {
 }
 
 function isRankingCapable(api: BaseApi): api is RankingCapableApi {
-  return typeof (api as any).getOverallRanking === 'function'
+  return typeof (api as any).getOverallRanking === "function"
 }
 
 function getDateFormatter(region: MapleRegion): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat('en-CA', {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: REGION_TIMEZONES[region],
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   })
 }
 
@@ -333,13 +376,13 @@ function toDateOptions(formatter: Intl.DateTimeFormat, offsetDays: number): Date
   const target = Date.now() + offsetDays * MILLISECONDS_PER_DAY
   const [year, month, day] = formatter
     .format(target)
-    .split('-')
+    .split("-")
     .map((value) => Number(value))
   return { year, month, day }
 }
 
 function fromDateOptions({ year, month, day }: DateParts): Date {
-  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const iso = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
   return new Date(`${iso}T00:00:00Z`)
 }
 
@@ -381,7 +424,7 @@ function pickStatBlock(source: any): EquipmentStatBlock {
   const result: EquipmentStatBlock = {}
   for (const key of STAT_KEYS) {
     const value = source[key]
-    if (value && value !== '0' && value !== '0%') {
+    if (value && value !== "0" && value !== "0%") {
       result[key] = String(value)
     }
   }
@@ -391,3 +434,14 @@ function pickStatBlock(source: any): EquipmentStatBlock {
 function hasStats(block: EquipmentStatBlock): boolean {
   return Object.keys(block).length > 0
 }
+
+function summarizeForLog(payload: unknown): string {
+  try {
+    const json = JSON.stringify(payload, (_key, value) => (typeof value === "bigint" ? value.toString() : value))
+    if (!json) return ""
+    return json.length > 400 ? `${json.slice(0, 400)}...` : json
+  } catch {
+    return String(payload)
+  }
+}
+
