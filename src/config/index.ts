@@ -6,6 +6,7 @@ export interface CacheOptions {
   enabled: boolean
   ttl: number
   maxSize: number
+  resetHour: number
 }
 
 export interface ServiceOptions {
@@ -62,10 +63,16 @@ export const Config: Schema<Config> = Schema.object({
       .min(32)
       .max(2048)
       .description("缓存条目上限"),
+    resetHour: Schema.number()
+      .default(4)
+      .min(0)
+      .max(23)
+      .description("每天定时清空缓存的小时（24 小时制）"),
   }).default({
     enabled: true,
     ttl: 300,
     maxSize: 512,
+    resetHour: 4,
   }),
   allowBinding: Schema.boolean()
     .default(true)
@@ -84,6 +91,7 @@ export function normalizeConfig(config: Config): Config {
       enabled: config.cache.enabled,
       ttl: config.cache.ttl,
       maxSize: config.cache.maxSize,
+      resetHour: config.cache.resetHour,
     },
   }
 }

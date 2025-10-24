@@ -4,16 +4,22 @@ import { getRegionLabel } from "../config"
 import { MapleClient } from "../api/client"
 import type { ExperiencePoint, RankingRecord } from "../api/types"
 import { UserHistoryStore, isResolveFailure, resolveCharacterName } from "../data/user-history"
+import { InMemoryCache } from "../api/cache"
 import { formatAccessFlag, formatDate, formatNumber } from "../utils/format"
 import { renderCharacterReport } from "../templates/info"
-import { MapleStoryApi } from 'maplestory-openapi/tms'; // data from KMS
 
+
+export interface InfoImageCacheValue {
+  image: Buffer
+  summaryName: string
+}
 
 interface InfoCommandDeps {
   ctx: Context
   config: Config
   client: MapleClient
   history: UserHistoryStore
+  imageCache?: InMemoryCache<InfoImageCacheValue>
 }
 
 interface PuppeteerLike {
@@ -22,23 +28,10 @@ interface PuppeteerLike {
 }
 
 export function registerInfoCommand(deps: InfoCommandDeps) {
-  const { ctx, config, client, history } = deps
+  const { ctx, config, client, history, imageCache } = deps
   const regionLabel = getRegionLabel(config.region)
   const puppeteer = getPuppeteer(ctx)
   const infoLogger = new Logger("msbot-nexon:info")
-
-
-  const apiKey = 'test_fb944efffac058eb3f7575e5109fa9cd74bb7338f84068afdd350335b1c60cc5efe8d04e6d233bd35cf2fabdeb93fb0d';
-  const api = new MapleStoryApi(apiKey);
-  ctx.command('test')
-    .action(async () => {
-      const character = await api.getCharacter('青螃蟹GM');
-      const characterBasic = await api.getCharacterBasic(character.ocid);
-      infoLogger.info(characterBasic);
-    })
-
-
-
   ctx
     .command('tms/联盟查询 <name:string>', '查询冒险岛角色基本信息')
     .alias('tms/联盟信息')
@@ -54,6 +47,17 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
           return "等待输入超时，请稍后重试。"
         }
         return "角色名不能为空，请重新输入。"
+      }
+
+      const cacheKey = buildCacheKey(config.region, resolved.name)
+      if (imageCache) {
+        const cached = imageCache.get(cacheKey)
+        if (cached) {
+          if (resolved.shouldPersist && resolved.userId && resolved.platform) {
+            await history.remember(resolved.userId, resolved.platform, config.region, cached.summaryName)
+          }
+          return h.image(`data:image/png;base64,${cached.image.toString("base64")}`)
+        }
       }
 
       try {
@@ -88,6 +92,7 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
           try {
             const buffer = await renderWithPuppeteer(puppeteer, html)
             if (buffer) {
+              imageCache?.set(cacheKey, { image: buffer, summaryName: summary.name })
               return h.image(`data:image/png;base64,${buffer.toString("base64")}`)
             }
           } catch (error) {
@@ -225,6 +230,10 @@ function ensureBuffer(value: any): Buffer | null {
     return Buffer.from(value, "base64")
   }
   return null
+}
+
+function buildCacheKey(region: string, name: string): string {
+  return `${region}:${name.trim().toLowerCase()}`
 }
 
 function buildExperienceStats(series: ExperiencePoint[]) {

@@ -66,7 +66,6 @@ export class MapleClient {
       month: "2-digit",
       day: "2-digit",
     })
-
     if (options.baseUrl) {
       const normalized = options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`
       ;(this.api as any).client.defaults.baseURL = normalized

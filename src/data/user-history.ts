@@ -20,11 +20,9 @@ declare module "koishi" {
 }
 
 export class UserHistoryStore {
-  private readonly store = new Map<string, UserHistoryRecord>()
   private readonly logger = new Logger("msbot-nexon:binding")
 
   constructor(private readonly ctx: Context, private readonly allowBinding: boolean) {
-    ctx.on("dispose", () => this.store.clear())
     const model = ctx.model
     if (this.allowBinding && model) {
       model.extend(
@@ -49,23 +47,11 @@ export class UserHistoryStore {
     return this.allowBinding && Boolean(this.ctx.database)
   }
 
-  private key(userId: string, platform: string, region: MapleRegion) {
-    return `${platform}:${userId}:${region}`
-  }
-
   async remember(userId: string, platform: string, region: MapleRegion, character: string) {
-    const record: UserHistoryRecord = {
-      userId,
-      platform,
-      region,
-      character,
-      updatedAt: Date.now(),
-    }
-    this.store.set(this.key(userId, platform, region), record)
-
     if (!this.canPersist()) return
 
     const database = this.ctx.database!
+    const updatedAt = Math.floor(Date.now() / 1000)
 
     try {
       const existing = await database.get("mapleBinding", {
@@ -77,10 +63,16 @@ export class UserHistoryStore {
         await database.set(
           "mapleBinding",
           { id: existing[0].id },
-          { character, updatedAt: record.updatedAt },
+          { character, updatedAt },
         )
       } else {
-        await database.create("mapleBinding", record)
+        await database.create("mapleBinding", {
+          userId,
+          platform,
+          region,
+          character,
+          updatedAt,
+        })
       }
     } catch (error) {
       this.logger.warn(error as Error, "写入角色绑定失败")
@@ -88,14 +80,9 @@ export class UserHistoryStore {
   }
 
   async lookup(userId: string, platform: string, region: MapleRegion): Promise<UserHistoryRecord | undefined> {
-    const cacheKey = this.key(userId, platform, region)
-    const cached = this.store.get(cacheKey)
-    if (cached) return cached
-
     if (!this.canPersist()) return undefined
 
     const database = this.ctx.database!
-
     try {
       const rows = await database.get("mapleBinding", {
         userId,
@@ -109,9 +96,8 @@ export class UserHistoryStore {
         platform: row.platform,
         region: row.region as MapleRegion,
         character: row.character,
-        updatedAt: row.updatedAt,
+        updatedAt: Number(row.updatedAt) * 1000,
       }
-      this.store.set(cacheKey, record)
       return record
     } catch (error) {
       this.logger.warn(error as Error, "读取角色绑定失败")
