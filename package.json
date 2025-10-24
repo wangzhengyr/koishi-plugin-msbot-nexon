@@ -15,6 +15,7 @@
     "plugin"
   ],
   "dependencies": {
+    "dayjs": "^1.11.11",
     "maplestory-openapi": "^3.4.0"
   },
   "peerDependencies": {
