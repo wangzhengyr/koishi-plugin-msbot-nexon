@@ -2,11 +2,13 @@
 import type { Config } from "../config"
 import { getRegionLabel } from "../config"
 import { MapleClient } from "../api/client"
-import type { ExperiencePoint, RankingRecord } from "../api/types"
+import type { ExperiencePoint } from "../api/types"
+import { MapleScouterClient } from "../api/maplescouter"
 import { UserHistoryStore, isResolveFailure, resolveCharacterName } from "../data/user-history"
 import { InMemoryCache } from "../api/cache"
 import { formatAccessFlag, formatDate, formatNumber } from "../utils/format"
 import { renderCharacterReport } from "../templates/info"
+import { MapleScouterProfile } from "../entities"
 
 
 export interface InfoImageCacheValue {
@@ -18,6 +20,7 @@ interface InfoCommandDeps {
   ctx: Context
   config: Config
   client: MapleClient
+  scouter: MapleScouterClient
   history: UserHistoryStore
   imageCache?: InMemoryCache<InfoImageCacheValue>
 }
@@ -28,7 +31,7 @@ interface PuppeteerLike {
 }
 
 export function registerInfoCommand(deps: InfoCommandDeps) {
-  const { ctx, config, client, history, imageCache } = deps
+  const { ctx, config, client, scouter, history, imageCache } = deps
   const regionLabel = getRegionLabel(config.region)
   const puppeteer = getPuppeteer(ctx)
   const infoLogger = new Logger("msbot-nexon:info")
@@ -61,30 +64,21 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
       }
 
       try {
-        const info = await client.fetchCharacterInfo(resolved.name)
-        const ranking = await client.fetchRanking(resolved.name)
+        const [info, profile] = await Promise.all([
+          client.fetchCharacterInfo(resolved.name),
+          scouter.fetchProfile(resolved.name),
+        ])
 
         if (resolved.shouldPersist && resolved.userId && resolved.platform) {
           await history.remember(resolved.userId, resolved.platform, config.region, resolved.name)
         }
 
         const summary = info.summary
-        const experienceStats = buildExperienceStats(info.experience)
-        const rankingNeighbors = buildRankingNeighbors(ranking.records, summary.name, 6)
-        const rankingDate = ranking.records[0]?.date
-
         const html = renderCharacterReport({
           summary,
           union: info.union,
           experience: info.experience,
-          experienceStats,
-          ranking: {
-            available: ranking.available,
-            neighbors: rankingNeighbors,
-            message: ranking.message,
-            date: rankingDate,
-            characterName: summary.name,
-          },
+          profile,
           regionLabel,
         })
 
@@ -100,35 +94,7 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
           }
         }
 
-        const unionLine = info.union
-          ? `联盟：Lv.${info.union.level ?? "--"} ｜ 段位：${info.union.grade ?? "--"} ｜ 结晶点：${formatNumber(
-              info.union.artifactPoint ?? 0,
-            )}`
-          : "联盟：暂无记录（官方未返回数据）"
-
-        const fallbackLines = [
-          `角色：${summary.name}（${regionLabel}）`,
-          `等级：${summary.level} ｜ 职业：${summary.job}${summary.jobDetail ? ` ${summary.jobDetail}` : ""}`,
-          unionLine,
-          `公会：${summary.guild ?? "无公会"} ｜ ${formatAccessFlag(summary.accessFlag)}`,
-          `经验：${formatNumber(summary.exp)} ｜ 进度：${summary.expRate ?? "--"}`,
-          `创角：${formatDate(summary.createDate)} ｜ 解放任务：${
-            summary.liberationQuestClear === "1" ? "已完成" : "未完成"
-          }`,
-        ]
-
-        if (info.experience.length) {
-          const recent = info.experience.slice(-Math.min(info.experience.length, 5))
-          const rows = recent.map(
-            (item) => `· ${item.date} ｜ Lv.${item.level} ｜ 经验增量 +${formatNumber(item.gain)}`,
-          )
-          fallbackLines.push(`经验趋势（最近 ${recent.length} 天）：`, ...rows)
-        }
-
-        if (!ranking.available && ranking.message) {
-          fallbackLines.push(`排名提示：${ranking.message}`)
-        }
-
+        const fallbackLines = buildFallbackLines(summary, info.union, profile, regionLabel, info.experience)
         return fallbackLines.join("\n")
       } catch (error) {
         infoLogger.error(error as Error, "查询角色信息接口调用失败")
@@ -236,41 +202,55 @@ function buildCacheKey(region: string, name: string): string {
   return `${region}:${name.trim().toLowerCase()}`
 }
 
-function buildExperienceStats(series: ExperiencePoint[]) {
-  const sorted = [...series].sort((a, b) => a.date.localeCompare(b.date))
-  const last7 = sumRecent(sorted, 7)
-  const last14 = sumRecent(sorted, 14)
-  return {
-    total7: last7.total,
-    avg7: last7.count ? last7.total / last7.count : 0,
-    total14: last14.total,
-    avg14: last14.count ? last14.total / last14.count : 0,
+function buildFallbackLines(
+  summary: any,
+  union: any,
+  profile: MapleScouterProfile,
+  regionLabel: string,
+  experience: ExperiencePoint[],
+) {
+  const unionLine = union
+    ? `联盟：Lv.${union.level ?? "--"} ｜ 结晶等级：${union.artifactLevel ?? profile.basic.artifactLevel ?? "--"}`
+    : "联盟：暂无记录（官方未返回数据）"
+
+  const lines = [
+    `角色：${profile.basic.name || summary.name}（${regionLabel}）`,
+    `等级：${profile.basic.level ?? summary.level} ｜ 职业：${profile.basic.job ?? summary.job}`,
+    unionLine,
+    `ARC：${formatNumber(profile.basic.arcaneForce)} ｜ AUTH：${formatNumber(profile.basic.authenticForce)}`,
+    `战力：${formatTaiwanNumber(profile.combat.combatPower)} ｜ 一般（380）：${formatNumber(
+      profile.combat.generalDamage380 ?? 0,
+    )} ｜ HEXA（380）：${formatNumber(profile.combat.hexaDamage380 ?? 0)}`,
+    `公会：${profile.basic.guild ?? summary.guild ?? "无公会"} ｜ ${formatAccessFlag(summary.accessFlag)}`,
+    `经验：${formatNumber(summary.exp)} ｜ 进度：${summary.expRate ?? "--"}`,
+    `创角：${formatDate(summary.createDate)} ｜ 解放任务：${
+      summary.liberationQuestClear === "1" ? "已完成" : "未完成"
+    }`,
+  ]
+
+  if (experience.length) {
+    const recent = experience.slice(-Math.min(experience.length, 5))
+    const rows = recent.map(
+      (item) => `· ${item.date} ｜ Lv.${item.level} ｜ 经验增量 +${formatNumber(item.gain)}`,
+    )
+    lines.push(`经验趋势（最近 ${recent.length} 天）：`, ...rows)
   }
+  return lines
 }
 
-function sumRecent(series: ExperiencePoint[], span: number) {
-  if (!series.length) return { total: 0, count: 0 }
-  const slice = series.slice(-Math.min(series.length, span))
-  const total = slice.reduce((acc, item) => acc + (item.gain ?? 0), 0)
-  return { total, count: slice.length }
-}
-
-function buildRankingNeighbors(records: RankingRecord[], targetName: string, windowSize: number) {
-  if (!records.length) return []
-  const latestDate = records[0].date
-  const sameDate = records.filter((record) => record.date === latestDate)
-  const sorted = [...sameDate].sort((a, b) => a.ranking - b.ranking)
-  const normalized = normalizeName(targetName)
-  const index = sorted.findIndex((record) => normalizeName(record.characterName) === normalized)
-  if (index === -1) {
-    return sorted.slice(0, Math.min(sorted.length, windowSize))
+function formatTaiwanNumber(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return "--"
+  const numeric = typeof value === "string" ? Number(value) : value
+  if (!numeric || Number.isNaN(numeric)) return "--"
+  const units = [
+    { threshold: 1e12, label: "兆" },
+    { threshold: 1e8, label: "億" },
+    { threshold: 1e4, label: "萬" },
+  ]
+  for (const unit of units) {
+    if (numeric >= unit.threshold) {
+      return `${(numeric / unit.threshold).toFixed(2).replace(/\.0+$/, "")}${unit.label}`
+    }
   }
-  const half = Math.floor(windowSize / 2)
-  const start = Math.max(0, index - half)
-  const end = Math.min(sorted.length, start + windowSize)
-  return sorted.slice(start, end)
-}
-
-function normalizeName(input: string) {
-  return input.trim().toLowerCase()
+  return formatNumber(numeric)
 }

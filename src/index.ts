@@ -2,12 +2,14 @@
 import type { Config as PluginConfig } from "./config"
 import { Config as ConfigSchema, normalizeConfig } from "./config"
 import { MapleClient } from "./api/client"
+import { MapleScouterClient } from "./api/maplescouter"
 import { UserHistoryStore } from "./data/user-history"
 import { registerInfoCommand, InfoImageCacheValue } from "./commands/info"
 import { registerRankCommand } from "./commands/rank"
 import { registerEquipCommand } from "./commands/equip"
 import { registerBindCommand } from "./commands/bind"
 import { InMemoryCache } from "./api/cache"
+import { MapleScouterProfile } from "./entities"
 
 export const name = "msbot-nexon"
 export const Config = ConfigSchema
@@ -24,9 +26,29 @@ export function apply(ctx: Context, rawConfig: PluginConfig) {
   if (!config.apiKey) {
     throw new Error("请在插件配置中填写 Nexon Open API 密钥")
   }
+  if (!config.scouter?.apiKey) {
+    throw new Error("请在插件配置中填写 MapleScouter API Key")
+  }
 
   const history = new UserHistoryStore(ctx)
   const client = new MapleClient({ options: config })
+  const scouterCache = config.cache.enabled
+    ? new InMemoryCache<MapleScouterProfile>({
+        ttl: config.cache.ttl * 1000,
+        maxSize: config.cache.maxSize,
+      })
+    : undefined
+  const scouterClient = new MapleScouterClient({
+    region: config.region,
+    options: {
+      apiKey: config.scouter.apiKey,
+      baseUrl: config.scouter.baseUrl ?? "https://api.maplescouter.com/api",
+      preset: config.scouter.preset,
+      timeout: config.scouter.timeout,
+      debug: config.debug,
+    },
+    cache: scouterCache,
+  })
 
   const imageCache = config.cache.enabled
     ? new InMemoryCache<InfoImageCacheValue>({
@@ -38,10 +60,13 @@ export function apply(ctx: Context, rawConfig: PluginConfig) {
   if (imageCache) {
     scheduleDailyCacheReset(ctx, imageCache, config.cache.resetHour)
   }
+  if (scouterCache) {
+    scheduleDailyCacheReset(ctx, scouterCache, config.cache.resetHour)
+  }
 
   registerBindCommand({ ctx, config, client, history })
 
-  registerInfoCommand({ ctx, config, client, history, imageCache })
+  registerInfoCommand({ ctx, config, client, history, imageCache, scouter: scouterClient })
   registerRankCommand({ ctx, config, client, history })
   registerEquipCommand({ ctx, config, client, history })
 

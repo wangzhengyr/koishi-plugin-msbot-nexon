@@ -17,7 +17,8 @@
   "dependencies": {
     "@koishijs/plugin-puppeteer": "^3.2.0",
     "dayjs": "^1.11.11",
-    "maplestory-openapi": "^3.4.0"
+    "maplestory-openapi": "^3.4.0",
+    "undici": "^6.19.8"
   },
   "peerDependencies": {
     "koishi": "4.18.9"

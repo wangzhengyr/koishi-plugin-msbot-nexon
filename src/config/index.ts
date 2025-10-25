@@ -19,7 +19,16 @@ export interface ServiceOptions {
   debug: boolean
 }
 
-export type Config = ServiceOptions
+export interface MapleScouterOptions {
+  apiKey: string
+  baseUrl?: string
+  preset: string
+  timeout: number
+}
+
+export interface Config extends ServiceOptions {
+  scouter: MapleScouterOptions
+}
 
 const regionChoices = [
   Schema.const("tms").description("台服（TMS）"),
@@ -76,10 +85,30 @@ export const Config: Schema<Config> = Schema.object({
   debug: Schema.boolean()
     .default(false)
     .description("输出详细调试日志（包含请求参数、响应片段）"),
+  scouter: Schema.object({
+    apiKey: Schema.string().description("MapleScouter API Key，用于启用扩展战力与装备数据").default(""),
+    baseUrl: Schema.string()
+      .description("MapleScouter API 地址，默认即可")
+      .default("https://api.maplescouter.com/api"),
+    preset: Schema.string()
+      .default("00000")
+      .description("MapleScouter 查询预设（通常保持 00000）"),
+    timeout: Schema.number()
+      .default(8000)
+      .min(2000)
+      .max(20000)
+      .description("MapleScouter 接口超时时间（毫秒）"),
+  }).default({
+    apiKey: "",
+    baseUrl: "https://api.maplescouter.com/api",
+    preset: "00000",
+    timeout: 8000,
+  }),
 })
 
 export function normalizeConfig(config: Config): Config {
   const baseUrl = config.baseUrl?.trim()
+  const scouterBase = config.scouter?.baseUrl?.trim()
   return {
     ...config,
     baseUrl: baseUrl ? baseUrl.replace(/\/$/, "") : undefined,
@@ -88,6 +117,12 @@ export function normalizeConfig(config: Config): Config {
       ttl: config.cache.ttl,
       maxSize: config.cache.maxSize,
       resetHour: config.cache.resetHour,
+    },
+    scouter: {
+      apiKey: config.scouter.apiKey?.trim() ?? "",
+      baseUrl: scouterBase ? scouterBase.replace(/\/$/, "") : "https://api.maplescouter.com/api",
+      preset: config.scouter.preset?.trim() || "00000",
+      timeout: config.scouter.timeout,
     },
   }
 }
