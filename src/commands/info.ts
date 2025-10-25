@@ -204,42 +204,27 @@ function ensureBuffer(value: any): Buffer | null {
 
 function mergeHexaSkills(profile: MapleScouterProfile, skills: CharacterSkillInfoDto[]) {
   if (!skills.length) return
-  const nodes = skills.map((skill, index) => {
-    const name = readSkillText(skill, "skillName") ?? `六轉技能 ${index + 1}`
-    const icon = readSkillText(skill, "skillIcon")
-    const levelValue = readSkillText(skill, "skillLevel")
-    const effects = collectSkillEffects(skill)
-    const keySource = readSkillText(skill, "skillId") ?? readSkillText(skill, "skillName") ?? String(index)
-    const node: MapleScouterHexaNode = {
-      key: `skill-${keySource}`,
-      label: name,
-      level: Number(levelValue ?? 0) || 0,
-      icon: icon ?? undefined,
-      mainSkill: name,
-      subSkills: effects,
-      subSkillIcons: [],
-    }
-    return node
-  })
-  profile.hexa.nodes = nodes
-}
-
-function collectSkillEffects(skill: CharacterSkillInfoDto): string[] {
-  const sources = [readSkillText(skill, "skillDescription"), readSkillText(skill, "skillEffect")]
-  const lines: string[] = []
-  for (const text of sources) {
-    if (!text) continue
-    const parts = text
-      .split(/\r?\n+/)
-      .map((line) => line.replace(/\s+/g, " ").trim())
-      .filter(Boolean)
-    for (const part of parts) {
-      if (!lines.includes(part)) {
-        lines.push(part)
+  const nodes = skills
+    .map((skill, index) => {
+      const name = readSkillText(skill, "skillName") ?? `六轉技能 ${index + 1}`
+      if (/能力值|hexa/i.test(name)) return null
+      const icon = readSkillText(skill, "skillIcon")
+      const levelValue = readSkillText(skill, "skillLevel")
+      const keySource = readSkillText(skill, "skillId") ?? readSkillText(skill, "skillName") ?? String(index)
+      const node: MapleScouterHexaNode = {
+        key: `skill-${keySource}`,
+        label: name,
+        level: Number(levelValue ?? 0) || 0,
+        icon: icon ?? undefined,
+        mainSkill: name,
+        subSkills: [],
+        subSkillIcons: [],
       }
-    }
-  }
-  return lines.slice(0, 3)
+      return node
+    })
+    .filter((node): node is MapleScouterHexaNode => Boolean(node))
+  if (!nodes.length) return
+  profile.hexa.nodes = nodes
 }
 
 function readSkillText(skill: CharacterSkillInfoDto, key: string): string | undefined {

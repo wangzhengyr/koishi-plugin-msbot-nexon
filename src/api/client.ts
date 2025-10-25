@@ -244,7 +244,7 @@ export class MapleClient {
 
   private async fetchExperienceHistory(ocid: string): Promise<ExperiencePoint[]> {
     const snapshots: Array<{ date: string; level: number; exp: number }> = []
-    for (let offset = this.experienceDays; offset >= 0; offset--) {
+    for (let offset = this.experienceDays; offset >= 1; offset--) {
       const options = this.getDateOptions(offset)
       try {
         const dto = await this.api.getCharacterBasic(ocid, options as { year: number; month: number; day: number })
@@ -260,20 +260,33 @@ export class MapleClient {
       } catch (error) {
         if (error instanceof MapleStoryApiError) {
           const code = MapleStoryApiErrorCode[error.errorCode]
-          if (code === "OPENAPI00009" || code === "OPENAPI00008") {
+          const message = String(error.message ?? "")
+          if (
+            code === "OPENAPI00009" ||
+            code === "OPENAPI00008" ||
+            /please input valid parameter/i.test(message)
+          ) {
+            if (this.debug) {
+              this.logger.debug(
+                error as Error,
+                "[getCharacterBasic] 跳过不可用日期 ocid=%s date=%s-%s-%s",
+                ocid,
+                options.year,
+                options.month,
+                options.day,
+              )
+            }
             continue
           }
         }
-        if (this.debug) {
-          this.logger.warn(
-            error as Error,
-            "[getCharacterBasic] 获取经验记录失败 ocid=%s date=%s-%s-%s",
-            ocid,
-            options.year,
-            options.month,
-            options.day,
-          )
-        }
+        this.logger.warn(
+          error as Error,
+          "[getCharacterBasic] 获取经验记录失败 ocid=%s date=%s-%s-%s",
+          ocid,
+          options.year,
+          options.month,
+          options.day,
+        )
       }
     }
     const series = buildExperienceSeries(snapshots)

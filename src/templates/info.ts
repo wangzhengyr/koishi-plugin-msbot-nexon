@@ -2,12 +2,13 @@
 import {
   MapleScouterProfile,
   MapleScouterEquipment,
+  MapleScouterEquipmentStat,
   MapleScouterHexaNode,
   MapleScouterPotentialLine,
   MapleScouterSymbol,
 } from "../entities"
 import { formatNumber } from "../utils/format"
-import { HEXA_ICONS } from "./icon-assets"
+import { HEXA_ICONS, ICONS } from "./icon-assets"
 
 interface CharacterReportProps {
   summary: CharacterSummary
@@ -45,18 +46,18 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 32px;
+    padding: 32px 40px;
     font-family: "Inter", "Microsoft Yahei", sans-serif;
     background: #eef2ff;
     color: #1b2559;
   }
   #app {
-    max-width: 2100px;
+    max-width: 2300px;
     margin: 0 auto;
   }
   .report {
     display: grid;
-    grid-template-columns: 360px minmax(0, 1fr) 340px;
+    grid-template-columns: 360px minmax(0, 1fr);
     gap: 24px;
     align-items: start;
   }
@@ -64,6 +65,11 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     display: flex;
     flex-direction: column;
     gap: 18px;
+  }
+  .main-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
   }
   .card {
     background: #fff;
@@ -108,17 +114,29 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   }
   .summary-meta {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    gap: 6px;
     font-size: 15px;
     color: #3a447a;
     font-weight: 600;
+  }
+  .summary-jobline,
+  .summary-levelline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    max-width: 100%;
   }
   .summary-job {
     padding: 2px 8px;
     border-radius: 999px;
     background: rgba(68, 93, 255, 0.12);
     color: #445dff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 72%;
   }
   .summary-job-detail {
     padding: 2px 8px;
@@ -127,11 +145,20 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     color: #4b5db8;
     font-size: 12px;
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
   }
   .summary-level {
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
+  }
+  .summary-exp {
+    font-size: 12px;
+    color: #5f6ba6;
   }
   .summary-level strong {
     font-weight: 700;
@@ -145,6 +172,9 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     font-size: 14px;
     color: #5a6399;
     margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .summary-tags {
     display: flex;
@@ -240,17 +270,18 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   .equip-card {
     border: 1px solid #ebefff;
     border-radius: 22px;
-    padding: 24px;
+    padding: 20px;
     background: #fbfcff;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 94px 1fr;
     gap: 16px;
     height: 100%;
   }
   .equip-head {
     display: flex;
-    gap: 18px;
+    flex-direction: column;
     align-items: center;
+    gap: 10px;
   }
   .equip-head img {
     width: 72px;
@@ -264,75 +295,71 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     font-size: 12px;
     color: #7d86b6;
     text-transform: uppercase;
+    text-align: center;
   }
   .equip-name {
     font-size: 16px;
     font-weight: 600;
     color: #293361;
   }
-  .equip-meta {
+  .equip-badges {
     display: flex;
     gap: 6px;
-    margin-top: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
   }
-  .equip-meta span {
-    padding: 3px 8px;
-    border-radius: 8px;
-    background: rgba(68, 93, 255, 0.16);
-    color: #3f54d9;
+  .equip-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 10px;
+    background: rgba(255, 207, 72, 0.18);
+    color: #d28a00;
     font-size: 12px;
     font-weight: 600;
   }
-  .equip-stats {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px 10px;
+  .equip-badge img {
+    width: 14px;
+    height: 14px;
   }
-  .equip-stat {
-    background: rgba(42, 57, 113, 0.06);
+  .equip-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .equip-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .equip-column {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .equip-note-label {
+    font-weight: 600;
+    color: #313c70;
+    font-size: 12px;
+  }
+  .equip-chip-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .equip-chip {
+    background: rgba(93, 107, 255, 0.12);
     border-radius: 8px;
     padding: 6px 8px;
     font-size: 12px;
-    color: #4b5788;
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .equip-stat-label {
-    font-weight: 600;
-    color: #313c70;
-  }
-  .equip-stat-value {
-    color: #4c5aa7;
-  }
-  .equip-stat-empty {
-    font-size: 12px;
-    color: #8b95c6;
-  }
-  .equip-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .equip-note {
-    font-size: 12px;
-    color: #54608f;
-    line-height: 1.5;
-  }
-  .equip-note-label {
-    display: block;
-    font-weight: 600;
-    color: #313c70;
-    margin-bottom: 2px;
-  }
-  .equip-note-lines {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    color: #3f4b88;
+    line-height: 1.4;
   }
   .equip-note-empty {
     color: #9aa3cf;
     font-style: italic;
+    font-size: 12px;
   }
   .hexa-card {
     display: flex;
@@ -340,85 +367,47 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     gap: 12px;
   }
   .hexa-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
   }
-  .hexa-line {
+  .hexa-item {
+    background: rgba(236, 240, 255, 0.6);
+    border: 1px solid rgba(93, 107, 255, 0.2);
+    border-radius: 14px;
+    padding: 10px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 0;
-    border-bottom: 1px solid #eef1ff;
-  }
-  .hexa-line:last-child {
-    border-bottom: none;
+    gap: 8px;
   }
   .hexa-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, rgba(89, 100, 255, 0.18), rgba(89, 100, 255, 0.05));
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(89, 100, 255, 0.2), rgba(89, 100, 255, 0.05));
+    border: 1px solid rgba(89, 100, 255, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(89, 100, 255, 0.2);
-    box-shadow: 0 10px 16px rgba(51, 64, 146, 0.08);
   }
   .hexa-icon img {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
     object-fit: cover;
   }
   .hexa-info {
-    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
   .hexa-info strong {
-    display: block;
-    font-size: 14px;
+    font-size: 13px;
     color: #394273;
   }
   .hexa-info span {
     font-size: 12px;
     color: #7079ab;
-  }
-  .hexa-sub-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
-  }
-  .hexa-sub-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 2px 0;
-  }
-  .hexa-sub-item img {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    object-fit: cover;
-  }
-  .hexa-sub-item span {
-    font-size: 12px;
-    color: #4a568a;
-    line-height: 1.5;
-    white-space: normal;
-  }
-  .hexa-bar {
-    width: 90%;
-    height: 6px;
-    border-radius: 999px;
-    background: #e6eaff;
-    overflow: hidden;
-    margin-left: 56px;
-  }
-  .hexa-bar span {
-    display: block;
-    height: 100%;
-    background: linear-gradient(90deg, #5a7bff, #9ea7ff);
   }
   .potential-list {
     display: flex;
@@ -499,7 +488,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     z-index: 1;
   }
   .exp-bar {
-    flex: 1;
+    flex: 1 0 32px;
     min-width: 32px;
     max-width: 68px;
     display: flex;
@@ -507,6 +496,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     align-items: center;
     justify-content: flex-end;
     gap: 10px;
+    height: 180px;
   }
   .exp-bar small {
     font-size: 11px;
@@ -526,6 +516,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     overflow: hidden;
     display: flex;
     align-items: flex-end;
+    min-height: 140px;
   }
   .exp-bar-fill {
     width: 100%;
@@ -551,12 +542,17 @@ export function renderCharacterReport(props: CharacterReportProps): string {
             <div>
               <div class="summary-title">${escapeHtml(summary.name)}</div>
               <div class="summary-meta">
-                <span class="summary-job">${escapeHtml(jobName)}</span>
-                <span class="summary-level"><strong>Lv.${escapeHtml(String(summary.level))}</strong>${
-                  expRate ? `<span>${escapeHtml(expRate)}</span>` : ""
-                }</span>
+                <div class="summary-jobline">
+                  <span class="summary-job">${escapeHtml(jobName)}</span>
+                  ${jobDetailBadge}
+                </div>
+                <div class="summary-levelline">
+                  <span class="summary-level"><strong>Lv.${escapeHtml(String(summary.level))}</strong>${
+                    expRate ? `<span class="summary-exp">${escapeHtml(expRate)}</span>` : ""
+                  }</span>
+                </div>
               </div>
-              <div class="summary-sub">${escapeHtml(regionLabel)} ｜ ${escapeHtml(worldLabel)}</div>
+              <div class="summary-sub">${escapeHtml(worldLabel)}</div>
               <div class="summary-tags">
                 <span class="tag">${escapeHtml(profile.basic.guild ?? summary.guild ?? "無公會")}</span>
                 <span class="tag">人氣 ${escapeHtml(formatNumber(profile.basic.popularity ?? 0))}</span>
@@ -576,6 +572,10 @@ export function renderCharacterReport(props: CharacterReportProps): string {
           </div>
           ${renderCombatStats(profile)}
         </section>
+        <section class="card hexa-card">
+          <h3>六轉核心</h3>
+          ${hexaList}
+        </section>
         <section class="card info-card">
           <h3>潛能 / 能力</h3>
           ${potentialList}
@@ -585,14 +585,12 @@ export function renderCharacterReport(props: CharacterReportProps): string {
           ${symbolGroups}
         </section>
       </div>
-      <section class="card equip-card-board">
-        <h3>裝備概覽</h3>
-        ${equipmentGrid}
-      </section>
-      <section class="card hexa-card">
-        <h3>六轉核心</h3>
-        ${hexaList}
-      </section>
+      <div class="main-column">
+        <section class="card equip-card-board">
+          <h3>裝備概覽</h3>
+          ${equipmentGrid}
+        </section>
+      </div>
     </div>
     <section class="card exp-card">
       <h3 style="margin:0 0 16px;font-size:18px;color:#3143a7;">近期經驗趨勢</h3>
@@ -662,61 +660,74 @@ function renderEquipmentCard(item: MapleScouterEquipment) {
   const icon = item.icon
     ? `<img src="${escapeHtml(item.icon)}" alt="${escapeHtml(item.name)}" />`
     : '<div style="width:72px;height:72px;border-radius:18px;border:1px dashed #d5dcff;background:#f0f2ff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#95a0cf;">無圖</div>'
-  const metaTags = [
-    typeof item.starforce === "number" ? `★ ${item.starforce}` : "",
-    typeof item.scrolls === "number" ? `卷軸 ${item.scrolls}` : "",
-  ].filter(Boolean)
-  const meta = metaTags.length
-    ? `<div class="equip-meta">${metaTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>`
-    : ""
-  const stats = (item.stats ?? [])
-    .map(
-      (stat) =>
-        `<div class="equip-stat">
-          <span class="equip-stat-label">${escapeHtml(stat.label)}</span>
-          <span class="equip-stat-value">${escapeHtml(stat.value)}</span>
-        </div>`,
+  const badges: string[] = []
+  if (typeof item.starforce === "number") {
+    badges.push(
+      `<span class="equip-badge"><img src="${ICONS.star}" alt="星力" />${escapeHtml(String(item.starforce))} 星</span>`,
     )
-    .join("")
-  const detailSections: string[] = []
-  if (item.potentials?.length) {
-    detailSections.push(renderEquipOptionBlock("潛能", item.potentials))
   }
-  if (item.additionalPotentials?.length) {
-    detailSections.push(renderEquipOptionBlock("附加", item.additionalPotentials))
+  if (typeof item.scrolls === "number") {
+    badges.push(
+      `<span class="equip-badge"><img src="${ICONS.scroll}" alt="卷軸" />${escapeHtml(String(item.scrolls))}</span>`,
+    )
+  }
+  const meta = badges.length ? `<div class="equip-badges">${badges.join("")}</div>` : ""
+
+  const detailColumns: string[] = []
+  if (item.stats?.length) {
+    detailColumns.push(renderEquipStatColumn(item.stats))
   }
   if (item.flameSummary) {
-    detailSections.push(
-      `<div class="equip-note">
+    detailColumns.push(
+      `<div class="equip-column">
         <span class="equip-note-label">火花</span>
-        <div class="equip-note-lines"><span>${escapeHtml(item.flameSummary)}</span></div>
+        <div class="equip-chip-list"><div class="equip-chip">${escapeHtml(item.flameSummary)}</div></div>
       </div>`,
     )
   }
+  if (item.potentials?.length) {
+    detailColumns.push(renderEquipOptionColumn("潛能", item.potentials))
+  }
+  if (item.additionalPotentials?.length) {
+    detailColumns.push(renderEquipOptionColumn("附加潛能", item.additionalPotentials))
+  }
   const detail =
-    detailSections.length > 0 ? detailSections.join("") : '<div class="equip-note equip-note-empty">未提供潛能資訊</div>'
+    detailColumns.length > 0
+      ? `<div class="equip-detail-grid">${detailColumns.join("")}</div>`
+      : '<div class="equip-note-empty">暫無潛能資訊</div>'
 
   return `<div class="equip-card">
     <div class="equip-head">
       ${icon}
-      <div>
-        <div class="equip-slot">${escapeHtml(item.slotLabel)}</div>
-        <div class="equip-name">${escapeHtml(item.name)}</div>
-        ${meta}
-      </div>
+      <div class="equip-slot">${escapeHtml(item.slotLabel)}</div>
+      ${meta}
     </div>
-    <div class="equip-stats">${stats || '<div class="equip-stat-empty">暫無屬性</div>'}</div>
-    <div class="equip-detail">${detail}</div>
+    <div class="equip-body">
+      <div class="equip-name">${escapeHtml(item.name)}</div>
+      ${detail}
+    </div>
   </div>`
 }
 
-function renderEquipOptionBlock(label: string, options: string[]): string {
+function renderEquipStatColumn(stats: MapleScouterEquipmentStat[]): string {
+  if (!stats.length) return ""
+  const rows = stats
+    .map((stat) => `<div class="equip-chip">${escapeHtml(stat.label)} ${escapeHtml(stat.value)}</div>`)
+    .join("")
+  return `<div class="equip-column">
+    <span class="equip-note-label">總屬性</span>
+    <div class="equip-chip-list">${rows}</div>
+  </div>`
+}
+
+function renderEquipOptionColumn(label: string, options: string[]): string {
   if (!options.length) return ""
-  return `<div class="equip-note">
+  const rows = options
+    .map((line) => `<div class="equip-chip">${escapeHtml(line)}</div>`)
+    .join("")
+  return `<div class="equip-column">
     <span class="equip-note-label">${escapeHtml(label)}</span>
-    <div class="equip-note-lines">
-      ${options.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
-    </div>
+    <div class="equip-chip-list">${rows}</div>
   </div>`
 }
 
@@ -725,36 +736,14 @@ function renderHexaNodes(nodes: MapleScouterHexaNode[]) {
   return `<div class="hexa-list">
     ${nodes
       .map((node) => {
-        const percent = Math.min(100, Math.round((node.level / 30) * 100))
         const icon = node.icon ?? HEXA_ICONS[node.key] ?? HEXA_ICONS.default
         const name = node.mainSkill ?? node.label
-        const subtitle = node.subSkills?.length ? renderHexaSubSkills(node) : ""
-        return `<div>
-          <div class="hexa-line">
-            <div class="hexa-icon"><img src="${escapeHtml(icon)}" alt="${escapeHtml(name)}" /></div>
-            <div class="hexa-info">
-              <strong>${escapeHtml(name)}</strong>
-              <span>Lv.${escapeHtml(String(node.level))}</span>
-              ${subtitle}
-            </div>
+        return `<div class="hexa-item">
+          <div class="hexa-icon"><img src="${escapeHtml(icon)}" alt="${escapeHtml(name)}" /></div>
+          <div class="hexa-info">
+            <strong>${escapeHtml(name)}</strong>
+            <span>Lv.${escapeHtml(String(node.level))}</span>
           </div>
-          <div class="hexa-bar"><span style="width:${percent}%"></span></div>
-        </div>`
-      })
-      .join("")}
-  </div>`
-}
-
-function renderHexaSubSkills(node: MapleScouterHexaNode) {
-  if (!node.subSkills || !node.subSkills.length) return ""
-  return `<div class="hexa-sub-list">
-    ${node.subSkills
-      .map((name, index) => {
-        const icon = node.subSkillIcons?.[index]
-        const iconNode = icon ? `<img src="${escapeHtml(icon)}" alt="${escapeHtml(name)}" />` : ""
-        return `<div class="hexa-sub-item">
-          ${iconNode}
-          <span>${escapeHtml(name)}</span>
         </div>`
       })
       .join("")}
