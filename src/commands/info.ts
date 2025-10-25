@@ -1,7 +1,7 @@
 ﻿import { Context, Logger, h } from "koishi"
 import type { Config } from "../config"
 import { getRegionLabel } from "../config"
-import { MapleClient, HexaMatrixNode } from "../api/client"
+import { MapleClient } from "../api/client"
 import type { ExperiencePoint } from "../api/types"
 import { MapleScouterClient } from "../api/maplescouter"
 import { UserHistoryStore, isResolveFailure, resolveCharacterName } from "../data/user-history"
@@ -9,6 +9,7 @@ import { InMemoryCache } from "../api/cache"
 import { formatAccessFlag, formatDate, formatNumber } from "../utils/format"
 import { renderCharacterReport } from "../templates/info"
 import { MapleScouterProfile, MapleScouterHexaNode } from "../entities"
+import type { CharacterSkillInfoDto } from "maplestory-openapi"
 
 
 export interface InfoImageCacheValue {
@@ -69,10 +70,8 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
           scouter.fetchProfile(resolved.name),
         ])
 
-        const hexaMatrix = await client.fetchHexaMatrix(info.ocid)
-        if (hexaMatrix.length) {
-          mergeHexaMatrix(profile, hexaMatrix)
-        }
+        const hexaSkills = await client.fetchCharacterSkills(info.ocid)
+        mergeHexaSkills(profile, hexaSkills)
 
         if (resolved.shouldPersist && resolved.userId && resolved.platform) {
           await history.remember(resolved.userId, resolved.platform, config.region, resolved.name)
@@ -113,7 +112,7 @@ function getPuppeteer(ctx: Context): PuppeteerLike | undefined {
 }
 
 async function renderWithPuppeteer(puppeteer: PuppeteerLike, html: string): Promise<Buffer | null> {
-  const viewport = { width: 1300, height: 760, deviceScaleFactor: 2 }
+  const viewport = { width: 1800, height: 960, deviceScaleFactor: 2 }
 
   if (typeof puppeteer.page === "function") {
     const rendered = await renderWithPage(puppeteer, html, viewport)
@@ -203,73 +202,64 @@ function ensureBuffer(value: any): Buffer | null {
   return null
 }
 
-const HEXA_DISPLAY_ORDER = [
-  "skillCore1",
-  "skillCore2",
-  "masteryCore1",
-  "masteryCore2",
-  "masteryCore3",
-  "masteryCore4",
-  "reinCore1",
-  "reinCore2",
-  "reinCore3",
-  "reinCore4",
-  "generalCore1",
-]
+function mergeHexaSkills(profile: MapleScouterProfile, skills: CharacterSkillInfoDto[]) {
+  if (!skills.length) return
+  const nodes = skills.map((skill, index) => {
+    const name = readSkillText(skill, "skillName") ?? `六轉技能 ${index + 1}`
+    const icon = readSkillText(skill, "skillIcon")
+    const levelValue = readSkillText(skill, "skillLevel")
+    const effects = collectSkillEffects(skill)
+    const keySource = readSkillText(skill, "skillId") ?? readSkillText(skill, "skillName") ?? String(index)
+    const node: MapleScouterHexaNode = {
+      key: `skill-${keySource}`,
+      label: name,
+      level: Number(levelValue ?? 0) || 0,
+      icon: icon ?? undefined,
+      mainSkill: name,
+      subSkills: effects,
+      subSkillIcons: [],
+    }
+    return node
+  })
+  profile.hexa.nodes = nodes
+}
 
-function mergeHexaMatrix(profile: MapleScouterProfile, matrix: HexaMatrixNode[]) {
-  if (!matrix.length) return
-  const nodeMap = new Map<string, MapleScouterHexaNode>()
-  for (const node of profile.hexa.nodes) {
-    const base: MapleScouterHexaNode = {
-      ...node,
-      subSkills: node.subSkills ?? [],
-      subSkillIcons: node.subSkillIcons ?? [],
-    }
-    nodeMap.set(node.key, base)
-  }
-  for (const entry of matrix) {
-    const existing = nodeMap.get(entry.key)
-    if (existing) {
-      if (entry.level && entry.level > 0) {
-        existing.level = entry.level
+function collectSkillEffects(skill: CharacterSkillInfoDto): string[] {
+  const sources = [readSkillText(skill, "skillDescription"), readSkillText(skill, "skillEffect")]
+  const lines: string[] = []
+  for (const text of sources) {
+    if (!text) continue
+    const parts = text
+      .split(/\r?\n+/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+    for (const part of parts) {
+      if (!lines.includes(part)) {
+        lines.push(part)
       }
-      if (entry.mainSkill) {
-        existing.label = entry.mainSkill
-        existing.mainSkill = entry.mainSkill
-      }
-      if (entry.icon) {
-        existing.icon = entry.icon
-      }
-      if (entry.subSkills.length) {
-        existing.subSkills = entry.subSkills
-      }
-      if (entry.subSkillIcons.length) {
-        existing.subSkillIcons = entry.subSkillIcons
-      }
-    } else {
-      nodeMap.set(entry.key, {
-        key: entry.key,
-        label: entry.mainSkill ?? entry.key,
-        level: entry.level,
-        icon: entry.icon,
-        mainSkill: entry.mainSkill,
-        subSkills: entry.subSkills,
-        subSkillIcons: entry.subSkillIcons,
-      })
     }
   }
-  const ordered: MapleScouterHexaNode[] = []
-  for (const key of HEXA_DISPLAY_ORDER) {
-    const node = nodeMap.get(key)
-    if (node) ordered.push(node)
+  return lines.slice(0, 3)
+}
+
+function readSkillText(skill: CharacterSkillInfoDto, key: string): string | undefined {
+  const bag = skill as unknown as Record<string, unknown>
+  const camelValue = bag[key]
+  if (typeof camelValue === "string" && camelValue.trim()) {
+    return camelValue.trim()
   }
-  for (const node of nodeMap.values()) {
-    if (!HEXA_DISPLAY_ORDER.includes(node.key) && !ordered.includes(node)) {
-      ordered.push(node)
-    }
+  if (typeof camelValue === "number" && Number.isFinite(camelValue)) {
+    return String(camelValue)
   }
-  profile.hexa.nodes = ordered
+  const snakeKey = key.replace(/([A-Z])/g, (_, letter: string) => `_${letter.toLowerCase()}`)
+  const snakeValue = bag[snakeKey]
+  if (typeof snakeValue === "string" && snakeValue.trim()) {
+    return snakeValue.trim()
+  }
+  if (typeof snakeValue === "number" && Number.isFinite(snakeValue)) {
+    return String(snakeValue)
+  }
+  return undefined
 }
 
 function buildCacheKey(region: string, name: string): string {
@@ -284,7 +274,7 @@ function buildFallbackLines(
   experience: ExperiencePoint[],
 ) {
   const unionLine = union
-    ? `联盟：Lv.${union.level ?? "--"} ｜ 结晶等级：${union.artifactLevel ?? profile.basic.artifactLevel ?? "--"}`
+    ? `联盟：Lv.${union.level ?? "--"} ｜ 戰地神器：${union.artifactLevel ?? profile.basic.artifactLevel ?? "--"}`
     : "联盟：暂无记录（官方未返回数据）"
 
   const lines = [

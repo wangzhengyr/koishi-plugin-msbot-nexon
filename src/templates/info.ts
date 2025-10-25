@@ -23,7 +23,6 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   const avatarNode = avatar
     ? `<img src="${escapeHtml(avatar)}" alt="avatar" />`
     : '<div class="avatar-placeholder">暫無頭像</div>'
-  const jobLabel = buildJobLabel(summary)
   const worldLabel = summary.world ?? profile.basic.world ?? "--"
   const experienceChart = renderExperienceChart(experience)
   const equipmentGrid = renderEquipmentGrid(profile.equipments)
@@ -32,6 +31,10 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   const symbolGroups = renderSymbolGroups(profile.symbols)
   const expRate = formatExpRate(summary.expRate ?? profile.basic.expRate)
   const rankingTags = buildRankingTags(profile.basic)
+  const jobName = summary.job ?? "未知職業"
+  const jobDetailBadge = summary.jobDetail
+    ? `<span class="summary-job-detail">${escapeHtml(summary.jobDetail)}</span>`
+    : ""
 
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -48,12 +51,12 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     color: #1b2559;
   }
   #app {
-    max-width: 1920px;
+    max-width: 2100px;
     margin: 0 auto;
   }
   .report {
     display: grid;
-    grid-template-columns: 380px minmax(0, 1fr) 360px;
+    grid-template-columns: 360px minmax(0, 1fr) 340px;
     gap: 24px;
     align-items: start;
   }
@@ -116,6 +119,14 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     border-radius: 999px;
     background: rgba(68, 93, 255, 0.12);
     color: #445dff;
+  }
+  .summary-job-detail {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(68, 93, 255, 0.08);
+    color: #4b5db8;
+    font-size: 12px;
+    font-weight: 600;
   }
   .summary-level {
     display: flex;
@@ -213,10 +224,10 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   }
   .equip-card-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(250px, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
   }
-  @media (max-width: 1700px) {
+  @media (max-width: 1500px) {
     .equip-card-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -228,23 +239,23 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   }
   .equip-card {
     border: 1px solid #ebefff;
-    border-radius: 18px;
-    padding: 20px;
+    border-radius: 22px;
+    padding: 24px;
     background: #fbfcff;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
     height: 100%;
   }
   .equip-head {
     display: flex;
-    gap: 14px;
+    gap: 18px;
     align-items: center;
   }
   .equip-head img {
-    width: 60px;
-    height: 60px;
-    border-radius: 14px;
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
     border: 1px solid #dde3ff;
     background: #fff;
     object-fit: cover;
@@ -255,7 +266,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     text-transform: uppercase;
   }
   .equip-name {
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
     color: #293361;
   }
@@ -265,11 +276,11 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     margin-top: 6px;
   }
   .equip-meta span {
-    padding: 2px 6px;
-    border-radius: 6px;
-    background: rgba(68, 93, 255, 0.12);
-    color: #445dff;
-    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: rgba(68, 93, 255, 0.16);
+    color: #3f54d9;
+    font-size: 12px;
     font-weight: 600;
   }
   .equip-stats {
@@ -380,11 +391,9 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   }
   .hexa-sub-item {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: 10px;
-    background: rgba(68, 93, 255, 0.12);
+    align-items: flex-start;
+    gap: 8px;
+    padding: 2px 0;
   }
   .hexa-sub-item img {
     width: 24px;
@@ -395,19 +404,8 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   .hexa-sub-item span {
     font-size: 12px;
     color: #4a568a;
-    white-space: nowrap;
-  }
-  .hexa-sub-placeholder {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    background: rgba(68, 93, 255, 0.28);
-    color: #fff;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
+    line-height: 1.5;
+    white-space: normal;
   }
   .hexa-bar {
     width: 90%;
@@ -553,7 +551,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
             <div>
               <div class="summary-title">${escapeHtml(summary.name)}</div>
               <div class="summary-meta">
-                <span class="summary-job">${escapeHtml(jobLabel)}</span>
+                <span class="summary-job">${escapeHtml(jobName)}</span>
                 <span class="summary-level"><strong>Lv.${escapeHtml(String(summary.level))}</strong>${
                   expRate ? `<span>${escapeHtml(expRate)}</span>` : ""
                 }</span>
@@ -570,7 +568,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
             ${renderStatBlock("ARC 力量", formatNumber(profile.basic.arcaneForce))}
             ${renderStatBlock("AUTH 力量", formatNumber(profile.basic.authenticForce))}
             ${renderStatBlock("聯盟等級", renderUnionLevel(union, profile))}
-            ${renderStatBlock("結晶等級", renderArtifactLevel(union, profile))}
+            ${renderStatBlock("戰地神器", renderArtifactLevel(union, profile))}
           </div>
           <div class="stat-grid">
             ${renderStatBlock("武陵塔", profile.basic.dojangFloor ? `第 ${profile.basic.dojangFloor} 層` : "--")}
@@ -663,7 +661,7 @@ function renderEquipmentGrid(items: MapleScouterEquipment[]) {
 function renderEquipmentCard(item: MapleScouterEquipment) {
   const icon = item.icon
     ? `<img src="${escapeHtml(item.icon)}" alt="${escapeHtml(item.name)}" />`
-    : '<div style="width:60px;height:60px;border-radius:14px;border:1px dashed #d5dcff;background:#f0f2ff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#95a0cf;">無圖</div>'
+    : '<div style="width:72px;height:72px;border-radius:18px;border:1px dashed #d5dcff;background:#f0f2ff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#95a0cf;">無圖</div>'
   const metaTags = [
     typeof item.starforce === "number" ? `★ ${item.starforce}` : "",
     typeof item.scrolls === "number" ? `卷軸 ${item.scrolls}` : "",
@@ -753,9 +751,7 @@ function renderHexaSubSkills(node: MapleScouterHexaNode) {
     ${node.subSkills
       .map((name, index) => {
         const icon = node.subSkillIcons?.[index]
-        const iconNode = icon
-          ? `<img src="${escapeHtml(icon)}" alt="${escapeHtml(name)}" />`
-          : `<span class="hexa-sub-placeholder">${escapeHtml(name.slice(0, 2))}</span>`
+        const iconNode = icon ? `<img src="${escapeHtml(icon)}" alt="${escapeHtml(name)}" />` : ""
         return `<div class="hexa-sub-item">
           ${iconNode}
           <span>${escapeHtml(name)}</span>
@@ -838,13 +834,6 @@ function buildChartBars(series: ExperiencePoint[]) {
       </div>`
     })
     .join("")
-}
-
-function buildJobLabel(summary: CharacterSummary) {
-  if (summary.job && summary.jobDetail) {
-    return `${summary.job} / ${summary.jobDetail}`
-  }
-  return summary.job ?? "未知職業"
 }
 
 function formatCompactNumber(value: number | string | null | undefined): string {

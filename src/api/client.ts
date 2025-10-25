@@ -1,5 +1,4 @@
 import { Logger } from "koishi"
-import { request } from "undici"
 import {
   MapleStoryApi as BaseApi,
   MapleStoryApiError,
@@ -23,15 +22,8 @@ import {
   RankingRecord,
   UnionOverviewSummary,
 } from "./types"
+import type { CharacterSkillInfoDto } from "maplestory-openapi"
 import { buildExperienceSeries } from "../utils/experience"
-
-const OPEN_API_DEFAULT_BASE = "https://open.api.nexon.com"
-
-const REGION_ENDPOINT_PREFIX: Record<MapleRegion, string> = {
-  tms: "maplestorytw/v1",
-  kms: "maplestory/v1",
-  msea: "maplestorysea/v1",
-}
 
 const REGION_TIMEZONES: Record<MapleRegion, string> = {
   tms: "Asia/Taipei",
@@ -51,15 +43,6 @@ type RankingCapableApi = BaseApi & {
   getOverallRanking: (filter?: any, dateOptions?: any) => Promise<OverallRankingResponseDto>
 }
 
-export interface HexaMatrixNode {
-  key: string
-  level: number
-  mainSkill?: string
-  icon?: string
-  subSkills: string[]
-  subSkillIcons: string[]
-}
-
 export interface MapleClientDeps {
   options: ServiceOptions
 }
@@ -71,19 +54,11 @@ export class MapleClient {
   private readonly debug: boolean
   private readonly logger = new Logger("msbot-nexon:api")
   private readonly dateFormatter: Intl.DateTimeFormat
-  private readonly apiKey: string
-  private readonly openApiBase: string
-  private readonly timeout: number
 
   constructor({ options }: MapleClientDeps) {
     this.region = options.region
     this.experienceDays = Math.max(1, options.experienceDays ?? 7)
     this.debug = options.debug
-    this.apiKey = options.apiKey
-    this.timeout = options.timeout
-    this.openApiBase = options.baseUrl?.trim()
-      ? options.baseUrl.trim().replace(/\/$/, "")
-      : OPEN_API_DEFAULT_BASE
     this.api = createApiInstance(options.region, options.apiKey)
     this.api.timeout = options.timeout
     this.dateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -119,6 +94,17 @@ export class MapleClient {
     }
   }
 
+  async fetchCharacterSkills(ocid: string, grade: string | number = 6): Promise<CharacterSkillInfoDto[]> {
+    try {
+      const response = await this.api.getCharacterSkill(ocid, String(grade))
+      const skills = (response as any)?.characterSkill ?? []
+      return Array.isArray(skills) ? (skills as CharacterSkillInfoDto[]) : []
+    } catch (error) {
+      this.logger.warn(error as Error, "[getCharacterSkill] 获取六转技能失败 ocid=%s grade=%s", ocid, grade)
+      return []
+    }
+  }
+
   async fetchEquipments(name: string): Promise<CharacterEquipment> {
     const ocid = await this.fetchOcid(name)
     let dto
@@ -141,31 +127,6 @@ export class MapleClient {
             description: dto.title.titleDescription ?? undefined,
           }
         : null,
-    }
-  }
-
-  async fetchHexaMatrix(ocid: string): Promise<HexaMatrixNode[]> {
-    const prefix = REGION_ENDPOINT_PREFIX[this.region]
-    if (!this.apiKey || !prefix) return []
-    const endpoint = `${this.openApiBase}/${prefix}/character/hexamatrix?ocid=${encodeURIComponent(ocid)}`
-    try {
-      const response = await request(endpoint, {
-        method: "GET",
-        headersTimeout: this.timeout,
-        bodyTimeout: this.timeout,
-        headers: {
-          "Content-Type": "application/json",
-          "x-nxopen-api-key": this.apiKey,
-        },
-      })
-      if (response.statusCode >= 400) {
-        throw new Error(`HexaMatrix 接口响应异常（HTTP ${response.statusCode}）`)
-      }
-      const payload = JSON.parse(await response.body.text())
-      return mapHexaMatrixPayload(payload)
-    } catch (error) {
-      this.logger.warn(error as Error, "[getHexaMatrix] 获取六转核心详情失败 ocid=%s", ocid)
-      return []
     }
   }
 
@@ -435,197 +396,3 @@ const STAT_WHITELIST = [
   "allStat",
   "criticalRate",
 ] as const
-
-const HEXA_KEY_ORDER = [
-  "skillCore1",
-  "skillCore2",
-  "masteryCore1",
-  "masteryCore2",
-  "masteryCore3",
-  "masteryCore4",
-  "reinCore1",
-  "reinCore2",
-  "reinCore3",
-  "reinCore4",
-  "generalCore1",
-]
-
-interface HexaCounters {
-  skill: number
-  mastery: number
-  rein: number
-  general: number
-}
-
-function mapHexaMatrixPayload(payload: any): HexaMatrixNode[] {
-  const entries = extractHexaCoreEntries(payload)
-  if (!entries.length) return []
-  const counters: HexaCounters = { skill: 0, mastery: 0, rein: 0, general: 0 }
-  const mapped = entries
-    .map((entry: any) => normalizeHexaEntry(entry, counters))
-    .filter((entry): entry is HexaMatrixNode => Boolean(entry))
-  mapped.sort((a, b) => HEXA_KEY_ORDER.indexOf(a.key) - HEXA_KEY_ORDER.indexOf(b.key))
-  return mapped
-}
-
-function extractHexaCoreEntries(payload: any): any[] {
-  if (!payload || typeof payload !== "object") return []
-  const pools = [
-    payload.characterHexaCoreEquipment,
-    payload.character_hexa_core_equipment,
-    payload.characterHexaMatrix?.characterHexaCoreEquipment,
-    payload.character_hexamatrix?.character_hexa_core_equipment,
-    payload.characterHexaMatrix,
-    payload.character_hexamatrix,
-    payload.hexaCoreEquipment,
-    payload.hexa_core_equipment,
-  ]
-  for (const candidate of pools) {
-    if (Array.isArray(candidate) && candidate.length) {
-      return candidate
-    }
-  }
-  return []
-}
-
-function normalizeHexaEntry(entry: any, counters: HexaCounters): HexaMatrixNode | null {
-  if (!entry || typeof entry !== "object") return null
-  const typeSeed =
-    entry.coreType ??
-    entry.core_type ??
-    entry.slotType ??
-    entry.slot_type ??
-    entry.slotName ??
-    entry.slot_name ??
-    entry.slotId ??
-    entry.slot_id ??
-    ""
-  const key = resolveHexaKey(String(typeSeed), counters)
-  if (!key) return null
-  const rawLevel =
-    entry.hexaCoreLevel ??
-    entry.hexa_core_level ??
-    entry.coreLevel ??
-    entry.core_level ??
-    entry.level ??
-    0
-  const level = Number(rawLevel) && Number.isFinite(Number(rawLevel)) ? Number(rawLevel) : 0
-  const main = readSkillDetails(entry, "mainSkill")
-  const sub1 = readSkillDetails(entry, "subSkill1")
-  const sub2 = readSkillDetails(entry, "subSkill2")
-  const subEntries = [sub1, sub2].filter(Boolean) as Array<{ name?: string; icon?: string }>
-  const subSkills = subEntries.map((item) => item.name).filter(Boolean) as string[]
-  const subIcons = subEntries.map((item) => item.icon).filter(Boolean) as string[]
-  const mainName =
-    main?.name ??
-    entry.coreName ??
-    entry.core_name ??
-    entry.hexaCoreName ??
-    entry.hexa_core_name ??
-    undefined
-  const mainIcon =
-    main?.icon ??
-    entry.coreIcon ??
-    entry.core_icon ??
-    entry.hexaCoreIcon ??
-    entry.hexa_core_icon ??
-    undefined
-
-  return {
-    key,
-    level,
-    mainSkill: mainName,
-    icon: mainIcon,
-    subSkills,
-    subSkillIcons: subIcons,
-  }
-}
-
-function resolveHexaKey(typeSeed: string, counters: HexaCounters): string | null {
-  const type = typeSeed.toLowerCase()
-  if (type.includes("skill")) {
-    counters.skill += 1
-    return `skillCore${counters.skill}`
-  }
-  if (type.includes("mastery") || type.includes("master")) {
-    counters.mastery += 1
-    return `masteryCore${counters.mastery}`
-  }
-  if (type.includes("rein") || type.includes("enhance") || type.includes("reinforce")) {
-    counters.rein += 1
-    return `reinCore${counters.rein}`
-  }
-  if (type.includes("general") || type.includes("common") || type.includes("basic")) {
-    counters.general += 1
-    return `generalCore${counters.general}`
-  }
-
-  const total = counters.skill + counters.mastery + counters.rein + counters.general
-  if (total < 2) {
-    counters.skill += 1
-    return `skillCore${counters.skill}`
-  }
-  if (total < 6) {
-    counters.mastery += 1
-    return `masteryCore${counters.mastery}`
-  }
-  if (total < 10) {
-    counters.rein += 1
-    return `reinCore${counters.rein}`
-  }
-  counters.general += 1
-  return `generalCore${counters.general}`
-}
-
-function readSkillDetails(entry: any, base: string): { name?: string; icon?: string } | null {
-  const candidates = buildCandidateKeys(base)
-  for (const key of candidates) {
-    const value = entry[key]
-    if (value && typeof value === "object") {
-      const name = value.skillName ?? value.skill_name ?? value.name
-      const icon = value.skillIcon ?? value.skill_icon ?? value.icon
-      if (name || icon) return { name: name ?? undefined, icon: icon ?? undefined }
-    }
-  }
-  let selectedName: string | undefined
-  let selectedIcon: string | undefined
-  for (const key of candidates) {
-    const nameKeys = [`${key}Name`, `${key}_name`, `${key}name`]
-    const iconKeys = [`${key}Icon`, `${key}_icon`, `${key}icon`]
-    for (const nameKey of nameKeys) {
-      const candidate = entry[nameKey]
-      if (typeof candidate === "string" && candidate) {
-        selectedName = candidate
-        break
-      }
-    }
-    for (const iconKey of iconKeys) {
-      const candidate = entry[iconKey]
-      if (typeof candidate === "string" && candidate) {
-        selectedIcon = candidate
-        break
-      }
-    }
-  }
-  if (!selectedName && !selectedIcon) return null
-  return {
-    name: selectedName,
-    icon: selectedIcon,
-  }
-}
-
-function buildCandidateKeys(base: string): string[] {
-  const set = new Set<string>()
-  set.add(base)
-  const snake = toSnakeCase(base)
-  set.add(snake)
-  set.add(snake.replace(/(\d)/g, "_$1"))
-  return Array.from(set)
-}
-
-function toSnakeCase(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replace(/([a-zA-Z])(\d)/g, "$1_$2")
-    .toLowerCase()
-}
