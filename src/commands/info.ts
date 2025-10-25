@@ -1,14 +1,14 @@
 ﻿import { Context, Logger, h } from "koishi"
 import type { Config } from "../config"
 import { getRegionLabel } from "../config"
-import { MapleClient } from "../api/client"
+import { MapleClient, HexaMatrixNode } from "../api/client"
 import type { ExperiencePoint } from "../api/types"
 import { MapleScouterClient } from "../api/maplescouter"
 import { UserHistoryStore, isResolveFailure, resolveCharacterName } from "../data/user-history"
 import { InMemoryCache } from "../api/cache"
 import { formatAccessFlag, formatDate, formatNumber } from "../utils/format"
 import { renderCharacterReport } from "../templates/info"
-import { MapleScouterProfile } from "../entities"
+import { MapleScouterProfile, MapleScouterHexaNode } from "../entities"
 
 
 export interface InfoImageCacheValue {
@@ -68,6 +68,11 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
           client.fetchCharacterInfo(resolved.name),
           scouter.fetchProfile(resolved.name),
         ])
+
+        const hexaMatrix = await client.fetchHexaMatrix(info.ocid)
+        if (hexaMatrix.length) {
+          mergeHexaMatrix(profile, hexaMatrix)
+        }
 
         if (resolved.shouldPersist && resolved.userId && resolved.platform) {
           await history.remember(resolved.userId, resolved.platform, config.region, resolved.name)
@@ -198,6 +203,75 @@ function ensureBuffer(value: any): Buffer | null {
   return null
 }
 
+const HEXA_DISPLAY_ORDER = [
+  "skillCore1",
+  "skillCore2",
+  "masteryCore1",
+  "masteryCore2",
+  "masteryCore3",
+  "masteryCore4",
+  "reinCore1",
+  "reinCore2",
+  "reinCore3",
+  "reinCore4",
+  "generalCore1",
+]
+
+function mergeHexaMatrix(profile: MapleScouterProfile, matrix: HexaMatrixNode[]) {
+  if (!matrix.length) return
+  const nodeMap = new Map<string, MapleScouterHexaNode>()
+  for (const node of profile.hexa.nodes) {
+    const base: MapleScouterHexaNode = {
+      ...node,
+      subSkills: node.subSkills ?? [],
+      subSkillIcons: node.subSkillIcons ?? [],
+    }
+    nodeMap.set(node.key, base)
+  }
+  for (const entry of matrix) {
+    const existing = nodeMap.get(entry.key)
+    if (existing) {
+      if (entry.level && entry.level > 0) {
+        existing.level = entry.level
+      }
+      if (entry.mainSkill) {
+        existing.label = entry.mainSkill
+        existing.mainSkill = entry.mainSkill
+      }
+      if (entry.icon) {
+        existing.icon = entry.icon
+      }
+      if (entry.subSkills.length) {
+        existing.subSkills = entry.subSkills
+      }
+      if (entry.subSkillIcons.length) {
+        existing.subSkillIcons = entry.subSkillIcons
+      }
+    } else {
+      nodeMap.set(entry.key, {
+        key: entry.key,
+        label: entry.mainSkill ?? entry.key,
+        level: entry.level,
+        icon: entry.icon,
+        mainSkill: entry.mainSkill,
+        subSkills: entry.subSkills,
+        subSkillIcons: entry.subSkillIcons,
+      })
+    }
+  }
+  const ordered: MapleScouterHexaNode[] = []
+  for (const key of HEXA_DISPLAY_ORDER) {
+    const node = nodeMap.get(key)
+    if (node) ordered.push(node)
+  }
+  for (const node of nodeMap.values()) {
+    if (!HEXA_DISPLAY_ORDER.includes(node.key) && !ordered.includes(node)) {
+      ordered.push(node)
+    }
+  }
+  profile.hexa.nodes = ordered
+}
+
 function buildCacheKey(region: string, name: string): string {
   return `${region}:${name.trim().toLowerCase()}`
 }
@@ -217,10 +291,14 @@ function buildFallbackLines(
     `角色：${profile.basic.name || summary.name}（${regionLabel}）`,
     `等级：${profile.basic.level ?? summary.level} ｜ 职业：${profile.basic.job ?? summary.job}`,
     unionLine,
+    `排名：综合 ${formatRankLabel(profile.basic.characterRanking)} ｜ 伺服器 ${formatRankLabel(
+      profile.basic.worldRanking,
+    )} ｜ 职业 ${formatRankLabel(profile.basic.classRanking)}`,
     `ARC：${formatNumber(profile.basic.arcaneForce)} ｜ AUTH：${formatNumber(profile.basic.authenticForce)}`,
-    `战力：${formatTaiwanNumber(profile.combat.combatPower)} ｜ 一般（380）：${formatNumber(
-      profile.combat.generalDamage380 ?? 0,
-    )} ｜ HEXA（380）：${formatNumber(profile.combat.hexaDamage380 ?? 0)}`,
+    `战力：${formatTaiwanNumber(profile.combat.combatPower)} ｜ 一般（380）：${formatBossValue(
+      profile.combat.generalDamage380,
+      profile.combat.generalDamage300,
+    )} ｜ HEXA（380）：${formatBossValue(profile.combat.hexaDamage380, profile.combat.hexaDamage300)}`,
     `公会：${profile.basic.guild ?? summary.guild ?? "无公会"} ｜ ${formatAccessFlag(summary.accessFlag)}`,
     `经验：${formatNumber(summary.exp)} ｜ 进度：${summary.expRate ?? "--"}`,
     `创角：${formatDate(summary.createDate)} ｜ 解放任务：${
@@ -253,4 +331,18 @@ function formatTaiwanNumber(value: number | string | null | undefined): string {
     }
   }
   return formatNumber(numeric)
+}
+
+function formatBossValue(primary?: number | null, secondary?: number | null): string {
+  if (primary === null || primary === undefined) {
+    return secondary === null || secondary === undefined ? "--" : formatNumber(secondary)
+  }
+  const main = formatNumber(primary)
+  if (secondary === null || secondary === undefined || secondary === primary) return main
+  return `${main}（300：${formatNumber(secondary)}）`
+}
+
+function formatRankLabel(value?: number | null): string {
+  if (value === null || value === undefined || value <= 0) return "--"
+  return `#${formatNumber(value)}`
 }

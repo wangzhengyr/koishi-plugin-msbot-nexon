@@ -21,8 +21,36 @@ const HEXA_PALETTE: Record<string, { color: string; label: string }> = {
 }
 
 function buildHexaIcon(color: string, label: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop stop-color="${color}" offset="0%"/><stop stop-color="#ffffff" stop-opacity="0.25" offset="100%"/></linearGradient></defs><circle cx="32" cy="32" r="30" fill="url(#g)" stroke="rgba(0,0,0,0.08)" stroke-width="2"/><text x="32" y="38" font-size="20" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif">${label}</text></svg>`
+  const highlight = lightenColor(color, 0.35)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+    <defs>
+      <linearGradient id="hex-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="${color}"/>
+        <stop offset="100%" stop-color="${highlight}"/>
+      </linearGradient>
+      <filter id="hex-shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="rgba(0,0,0,0.25)"/>
+      </filter>
+    </defs>
+    <g filter="url(#hex-shadow)">
+      <polygon points="32 4 57 18 57 46 32 60 7 46 7 18" fill="url(#hex-gradient)" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+      <polygon points="32 8.5 52 20 52 44 32 55.5 12 44 12 20" fill="rgba(255,255,255,0.18)"/>
+    </g>
+    <text x="32" y="38" font-size="20" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Arial, sans-serif">${label}</text>
+  </svg>`
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`
+}
+
+function lightenColor(hex: string, ratio: number): string {
+  const value = hex.replace("#", "")
+  if (value.length !== 6) return hex
+  const clamp = (num: number) => Math.min(255, Math.max(0, Math.round(num)))
+  const r = parseInt(value.slice(0, 2), 16)
+  const g = parseInt(value.slice(2, 4), 16)
+  const b = parseInt(value.slice(4, 6), 16)
+  const light = (channel: number) => clamp(channel + (255 - channel) * ratio)
+  const toHex = (channel: number) => channel.toString(16).padStart(2, "0")
+  return `#${toHex(light(r))}${toHex(light(g))}${toHex(light(b))}`
 }
 
 export const HEXA_ICONS: Record<string, string> = Object.entries(HEXA_PALETTE).reduce(

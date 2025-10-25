@@ -15,13 +15,17 @@ export interface MapleScouterBasicInfo {
   power?: number
   dojangFloor?: number
   dojangTime?: number
+  characterRanking?: number
+  worldRanking?: number
+  classRanking?: number
 }
 
 export interface MapleScouterCombatStats {
   combatPower?: number
   generalDamage380?: number
   hexaDamage380?: number
-  hexaBonus?: number
+  generalDamage300?: number
+  hexaDamage300?: number
   statScore?: number
 }
 
@@ -29,6 +33,10 @@ export interface MapleScouterHexaNode {
   key: string
   label: string
   level: number
+  icon?: string
+  mainSkill?: string
+  subSkills?: string[]
+  subSkillIcons?: string[]
 }
 
 export interface MapleScouterHexaSummary {

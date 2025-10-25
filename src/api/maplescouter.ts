@@ -29,6 +29,10 @@ interface MapleScouterApiResponse {
     calculatedDamage_380?: number
     calculatedHexaDamage_380?: number
     mr_hexaStat?: number
+    boss300_stat?: number | string | null
+    boss380_stat?: number | string | null
+    boss300_hexaStat?: number | string | null
+    boss380_hexaStat?: number | string | null
     maple_scouter_const?: {
       stat_score?: number
     }
@@ -37,6 +41,9 @@ interface MapleScouterApiResponse {
     info?: Record<string, any>
     preset?: Record<string, any>
     special?: {
+      now_ability?: Array<{ grade?: string; option?: string }>
+    }
+    settings?: {
       now_ability?: Array<{ grade?: string; option?: string }>
     }
     hexaSkill?: Record<string, number>
@@ -108,12 +115,38 @@ const STAT_LABELS: Record<string, string> = {
   dex: "敏捷",
   int: "智力",
   luk: "幸运",
+  max_hp: "最大HP",
+  max_mp: "最大MP",
   attack_power: "攻击力",
   magic_power: "魔力",
+  attack_power_rate: "攻击力%",
+  magic_power_rate: "魔力%",
   boss_damage: "BOSS伤害",
+  damage: "伤害",
   ignore_monster_armor: "无视防御",
   all_stat: "全属性",
+  max_hp_rate: "最大HP%",
+  max_mp_rate: "最大MP%",
+  critical_rate: "暴击率",
+  critical_damage: "暴击伤害",
+  armor: "防御力",
+  speed: "移动速度",
+  jump: "跳跃力",
+  equipment_level_decrease: "需求等级减少",
 }
+
+const PERCENT_STAT_KEYS = new Set([
+  "boss_damage",
+  "damage",
+  "ignore_monster_armor",
+  "all_stat",
+  "max_hp_rate",
+  "max_mp_rate",
+  "critical_rate",
+  "critical_damage",
+  "attack_power_rate",
+  "magic_power_rate",
+])
 
 const HEXA_LABELS: Record<string, string> = {
   skillCore1: "技能核心 I",
@@ -211,10 +244,14 @@ function transformPayload(payload: MapleScouterApiResponse, preset: string): Map
   const hexaUsed = payload.userApiData?.hexaSkill_used ?? {}
   const combat = payload.calculatedData ?? {}
   const statConst = payload.calculatedData?.maple_scouter_const ?? {}
+  const bossGeneralStats = buildBossStats(combat, true)
+  const bossHexaStats = buildBossStats(combat, false)
 
   const equipments = pickEquipHighlights(payload.userEquipData ?? {})
   const hexaNodes = buildHexaNodes(hexaSkill, hexaGeneral)
-  const potentials = buildPotentialLines(payload.userApiData?.special?.now_ability ?? [])
+  const potentialSource =
+    payload.userApiData?.settings?.now_ability ?? payload.userApiData?.special?.now_ability ?? []
+  const potentials = buildPotentialLines(potentialSource)
   const symbols = buildSymbols(payload.userApiData?.symbol ?? {})
 
   return {
@@ -238,13 +275,17 @@ function transformPayload(payload: MapleScouterApiResponse, preset: string): Map
       power: info.power,
       dojangFloor: info.dojang_best_floor,
       dojangTime: info.dojang_best_time,
+      characterRanking: toNumber(info.character_ranking),
+      worldRanking: toNumber(info.world_ranking),
+      classRanking: toNumber(info.class_ranking),
     },
     combat: {
-      combatPower: combat.combatPower,
-      generalDamage380: combat.calculatedDamage_380,
-      hexaDamage380: combat.calculatedHexaDamage_380 ?? combat.calculatedDamage_380,
-      hexaBonus: combat.mr_hexaStat,
-      statScore: statConst.stat_score,
+      combatPower: toNumber(combat.combatPower) ?? combat.combatPower,
+      generalDamage380: bossGeneralStats.scene380 ?? undefined,
+      generalDamage300: bossGeneralStats.scene300 ?? undefined,
+      hexaDamage380: bossHexaStats.scene380 ?? undefined,
+      hexaDamage300: bossHexaStats.scene300 ?? undefined,
+      statScore: toNumber(statConst.stat_score) ?? statConst.stat_score,
     },
     equipments,
     hexa: {
@@ -275,8 +316,8 @@ function pickEquipHighlights(source: Record<string, MapleScouterApiEquip>): Mapl
     starforce: toNumber(item.starforce),
     scrolls: toNumber(item.scroll_upgrade),
     flameSummary: buildFlameSummary(item.addOption),
-    potentials: cleanupOptions(item.potential_option_1),
-    additionalPotentials: cleanupOptions(item.additional_potential_option_1),
+    potentials: collectOptions(item, "potential_option"),
+    additionalPotentials: collectOptions(item, "additional_potential_option"),
     stats: buildStatLines(item.totalOption),
   }))
 }
@@ -316,37 +357,172 @@ function buildSymbols(symbols: Record<string, { title?: string; type?: string; l
     .sort((a, b) => (a.type ?? "").localeCompare(b.type ?? ""))
 }
 
+type BossScene = 300 | 380
+
+interface PickOptions {
+  scene: BossScene
+  hexaEnabled: boolean
+}
+
+type MapleScouterBossPayload = Partial<{
+  boss300_stat: number | string | null
+  boss380_stat: number | string | null
+  boss300_hexaStat: number | string | null
+  boss380_hexaStat: number | string | null
+}>
+
+function buildBossStats(
+  source: MapleScouterApiResponse["calculatedData"] | undefined,
+  hexaEnabled: boolean,
+): { scene380: number | null; scene300: number | null } {
+  return {
+    scene380: extractSceneStat(source, 380, hexaEnabled),
+    scene300: extractSceneStat(source, 300, hexaEnabled),
+  }
+}
+
+function extractSceneStat(
+  source: MapleScouterApiResponse["calculatedData"] | undefined,
+  scene: BossScene,
+  hexaEnabled: boolean,
+): number | null {
+  if (!source) return null
+  const direct = readBossRaw(source, scene, hexaEnabled)
+  if (direct !== null) return direct
+  return pickBossStat(source, { scene, hexaEnabled })
+}
+
+function readBossRaw(
+  source: MapleScouterApiResponse["calculatedData"],
+  scene: BossScene,
+  hexaEnabled: boolean,
+): number | null {
+  const key = hexaEnabled
+    ? scene === 380
+      ? "boss380_hexaStat"
+      : "boss300_hexaStat"
+    : scene === 380
+      ? "boss380_stat"
+      : "boss300_stat"
+  return toFiniteNumber((source as MapleScouterBossPayload)[key as keyof MapleScouterBossPayload])
+}
+
+function pickBossStat(data: MapleScouterBossPayload | undefined, opt: PickOptions): number | null {
+  if (!data) return null
+  const primaryKey = opt.hexaEnabled
+    ? opt.scene === 380
+      ? "boss380_hexaStat"
+      : "boss300_hexaStat"
+    : opt.scene === 380
+      ? "boss380_stat"
+      : "boss300_stat"
+  const primary = toFiniteNumber((data as MapleScouterBossPayload)[primaryKey])
+  if (primary !== null) return primary
+
+  const fallbacks: Array<keyof MapleScouterBossPayload> = [
+    opt.hexaEnabled
+      ? opt.scene === 380
+        ? "boss380_stat"
+        : "boss300_stat"
+      : opt.scene === 380
+        ? "boss380_hexaStat"
+        : "boss300_hexaStat",
+    opt.hexaEnabled
+      ? opt.scene === 380
+        ? "boss300_hexaStat"
+        : "boss380_hexaStat"
+      : opt.scene === 380
+        ? "boss300_stat"
+        : "boss380_stat",
+  ]
+  for (const key of fallbacks) {
+    const fallback = toFiniteNumber((data as MapleScouterBossPayload)[key])
+    if (fallback !== null) return fallback
+  }
+  return null
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/,/g, "").trim()
+    if (!normalized) return null
+    const numeric = Number(normalized)
+    return Number.isFinite(numeric) ? numeric : null
+  }
+  return null
+}
+
 function buildStatLines(optionBlock?: EquipmentOptionBlock): Array<{ label: string; value: string }> {
   if (!optionBlock) return []
   const lines: Array<{ label: string; value: string }> = []
   for (const [key, label] of Object.entries(STAT_LABELS)) {
-    const value = optionBlock[key]
-    if (!value || Number(value) === 0) continue
-    const formatted = key.includes("damage") || key.includes("armor") || key.includes("all_stat") ? `${value}%` : `${value}`
+    const numeric = toFiniteNumber((optionBlock as Record<string, unknown>)[key])
+    if (numeric === null || numeric === 0) continue
+    if (key === "equipment_level_decrease") {
+      const valueText = formatStatNumber(Math.abs(numeric))
+      lines.push({
+        label,
+        value: `-${valueText}`,
+      })
+      continue
+    }
+    const sign = numeric >= 0 ? "+" : "-"
+    const valueText = formatStatNumber(Math.abs(numeric))
+    const withUnit = PERCENT_STAT_KEYS.has(key) ? `${valueText}%` : valueText
     lines.push({
       label,
-      value: key.includes("attack") || key.includes("magic") ? `+${formatted}` : `+${formatted}`,
+      value: `${sign}${withUnit}`,
     })
   }
-  return lines.slice(0, 5)
+  return lines
+}
+
+function formatStatNumber(value: number): string {
+  const rounded = Math.round(value * 100) / 100
+  if (Number.isInteger(rounded)) return String(rounded)
+  return rounded.toFixed(2).replace(/\.0+$/, "").replace(/(\.\d)0$/, "$1")
 }
 
 function buildFlameSummary(optionBlock?: EquipmentOptionBlock): string | undefined {
   if (!optionBlock) return undefined
   const entries = Object.entries(optionBlock)
-    .filter(([, value]) => Number(value) > 0)
-    .filter(([key]) => key in STAT_LABELS || key === "max_hp" || key === "max_mp")
     .map(([key, value]) => {
-      const label = STAT_LABELS[key] ?? (key === "max_hp" ? "HP" : key === "max_mp" ? "MP" : key)
-      return `${label}+${value}`
+      const numeric = toFiniteNumber(value)
+      if (numeric === null || numeric <= 0) return null
+      const label =
+        STAT_LABELS[key] ??
+        (key === "max_hp" ? "HP" : key === "max_mp" ? "MP" : key.replace(/_/g, " ").toUpperCase())
+      const amount = formatStatNumber(numeric)
+      const suffix = PERCENT_STAT_KEYS.has(key) ? `${amount}%` : amount
+      return `${label}+${suffix}`
     })
+    .filter((entry): entry is string => Boolean(entry))
   return entries.length ? entries.slice(0, 2).join(" / ") : undefined
 }
 
-function cleanupOptions(options?: string[]): string[] | undefined {
+function cleanupOptions(options?: Array<string | null | undefined>): string[] | undefined {
   if (!options || !options.length) return undefined
-  const sanitized = options.filter(Boolean)
+  const sanitized = options
+    .map((line) => (typeof line === "string" ? line.trim() : ""))
+    .filter((line) => line.length > 0)
   return sanitized.length ? sanitized : undefined
+}
+
+function collectOptions(item: MapleScouterApiEquip, prefix: string): string[] | undefined {
+  const merged: Array<string | null | undefined> = []
+  for (const key of Object.keys(item)) {
+    if (!key.startsWith(prefix)) continue
+    const raw = (item as Record<string, unknown>)[key]
+    if (Array.isArray(raw)) {
+      for (const entry of raw) {
+        merged.push(typeof entry === "string" ? entry : null)
+      }
+    }
+  }
+  return cleanupOptions(merged)
 }
 
 function toNumber(value: string | number | undefined): number | undefined {

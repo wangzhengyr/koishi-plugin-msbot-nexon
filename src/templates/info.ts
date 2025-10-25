@@ -30,6 +30,8 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   const hexaList = renderHexaNodes(profile.hexa.nodes)
   const potentialList = renderPotentialList(profile.potentials)
   const symbolGroups = renderSymbolGroups(profile.symbols)
+  const expRate = formatExpRate(summary.expRate ?? profile.basic.expRate)
+  const rankingTags = buildRankingTags(profile.basic)
 
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -46,13 +48,13 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     color: #1b2559;
   }
   #app {
-    max-width: 1480px;
+    max-width: 1920px;
     margin: 0 auto;
   }
   .report {
     display: grid;
-    grid-template-columns: 360px 1fr 320px;
-    gap: 20px;
+    grid-template-columns: 380px minmax(0, 1fr) 360px;
+    gap: 24px;
     align-items: start;
   }
   .left-column {
@@ -101,6 +103,33 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     font-weight: 700;
     margin-bottom: 4px;
   }
+  .summary-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    color: #3a447a;
+    font-weight: 600;
+  }
+  .summary-job {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(68, 93, 255, 0.12);
+    color: #445dff;
+  }
+  .summary-level {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .summary-level strong {
+    font-weight: 700;
+    color: #1f2b66;
+  }
+  .summary-level span {
+    font-size: 12px;
+    color: #5f6ba6;
+  }
   .summary-sub {
     font-size: 14px;
     color: #5a6399;
@@ -119,6 +148,10 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
+  }
+  .tag-rank {
+    background: rgba(255, 153, 102, 0.15);
+    color: #ff7a3d;
   }
   .stat-grid {
     display: grid;
@@ -160,6 +193,12 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     font-size: 18px;
     color: #324cff;
   }
+  .combat-item small {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #6d76a3;
+  }
   .info-card h3,
   .hexa-card h3,
   .equip-card-board h3 {
@@ -174,27 +213,37 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   }
   .equip-card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(4, minmax(250px, 1fr));
+    gap: 18px;
+  }
+  @media (max-width: 1700px) {
+    .equip-card-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 1100px) {
+    .equip-card-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
   .equip-card {
     border: 1px solid #ebefff;
     border-radius: 18px;
-    padding: 16px;
+    padding: 20px;
     background: #fbfcff;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    min-height: 200px;
+    gap: 12px;
+    height: 100%;
   }
   .equip-head {
     display: flex;
-    gap: 12px;
+    gap: 14px;
     align-items: center;
   }
   .equip-head img {
-    width: 56px;
-    height: 56px;
+    width: 60px;
+    height: 60px;
     border-radius: 14px;
     border: 1px solid #dde3ff;
     background: #fff;
@@ -206,26 +255,73 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     text-transform: uppercase;
   }
   .equip-name {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     color: #293361;
   }
-  .equip-stats {
+  .equip-meta {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
+    margin-top: 6px;
   }
-  .equip-stat-chip {
-    background: rgba(42, 57, 113, 0.08);
+  .equip-meta span {
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(68, 93, 255, 0.12);
+    color: #445dff;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .equip-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+  }
+  .equip-stat {
+    background: rgba(42, 57, 113, 0.06);
     border-radius: 8px;
-    padding: 4px 8px;
+    padding: 6px 8px;
     font-size: 12px;
     color: #4b5788;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .equip-stat-label {
+    font-weight: 600;
+    color: #313c70;
+  }
+  .equip-stat-value {
+    color: #4c5aa7;
+  }
+  .equip-stat-empty {
+    font-size: 12px;
+    color: #8b95c6;
+  }
+  .equip-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .equip-note {
     font-size: 12px;
     color: #54608f;
     line-height: 1.5;
+  }
+  .equip-note-label {
+    display: block;
+    font-weight: 600;
+    color: #313c70;
+    margin-bottom: 2px;
+  }
+  .equip-note-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .equip-note-empty {
+    color: #9aa3cf;
+    font-style: italic;
   }
   .hexa-card {
     display: flex;
@@ -248,19 +344,21 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     border-bottom: none;
   }
   .hexa-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: #f4f6ff;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(89, 100, 255, 0.18), rgba(89, 100, 255, 0.05));
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid #e0e5ff;
+    border: 1px solid rgba(89, 100, 255, 0.2);
+    box-shadow: 0 10px 16px rgba(51, 64, 146, 0.08);
   }
   .hexa-icon img {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    object-fit: cover;
   }
   .hexa-info {
     flex: 1;
@@ -273,6 +371,43 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   .hexa-info span {
     font-size: 12px;
     color: #7079ab;
+  }
+  .hexa-sub-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .hexa-sub-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 10px;
+    background: rgba(68, 93, 255, 0.12);
+  }
+  .hexa-sub-item img {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    object-fit: cover;
+  }
+  .hexa-sub-item span {
+    font-size: 12px;
+    color: #4a568a;
+    white-space: nowrap;
+  }
+  .hexa-sub-placeholder {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: rgba(68, 93, 255, 0.28);
+    color: #fff;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
   }
   .hexa-bar {
     width: 90%;
@@ -329,33 +464,82 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     margin-top: 20px;
   }
   .chart-area {
+    position: relative;
     height: 260px;
-    padding: 12px 0 0;
+    padding: 32px 24px 24px;
     display: flex;
     align-items: flex-end;
-    gap: 14px;
+    gap: 18px;
+    border-radius: 20px;
+    border: 1px solid #dde2ff;
+    background: linear-gradient(180deg, rgba(94, 107, 255, 0.12), rgba(94, 107, 255, 0.02));
+    overflow: hidden;
+  }
+  .chart-area::before {
+    content: "";
+    position: absolute;
+    inset: 18px 18px 16px;
+    border-radius: 14px;
+    background: repeating-linear-gradient(
+      to top,
+      rgba(120, 132, 196, 0.16),
+      rgba(120, 132, 196, 0.16) 1px,
+      transparent 1px,
+      transparent 38px
+    );
+    pointer-events: none;
+  }
+  .chart-area::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+    pointer-events: none;
+  }
+  .chart-area > * {
+    position: relative;
+    z-index: 1;
   }
   .exp-bar {
     flex: 1;
-    min-width: 24px;
-    background: linear-gradient(180deg, #6d8dff, #4f6df1);
-    border-radius: 10px 10px 4px 4px;
-    position: relative;
+    min-width: 32px;
+    max-width: 68px;
     display: flex;
-    align-items: flex-end;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
   }
   .exp-bar small {
-    position: absolute;
-    top: -26px;
     font-size: 11px;
-    color: #4b5fb5;
+    color: #3f4b94;
+    font-weight: 600;
+    background: #fff;
+    padding: 4px 8px;
+    border-radius: 8px;
+    box-shadow: 0 10px 20px rgba(61, 72, 143, 0.18);
+  }
+  .exp-bar-track {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    border-radius: 12px;
+    background: rgba(94, 107, 255, 0.12);
+    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+  }
+  .exp-bar-fill {
+    width: 100%;
+    height: var(--bar-height, 20%);
+    border-radius: 12px 12px 6px 6px;
+    background: linear-gradient(180deg, #6c80ff 0%, #4d5ef1 100%);
+    box-shadow: 0 12px 24px rgba(73, 90, 241, 0.28);
+    transition: height 0.3s ease;
   }
   .exp-bar span {
-    position: absolute;
-    bottom: -20px;
     font-size: 11px;
-    color: #7d86b6;
+    color: #6f78ab;
   }
 </style>
 </head>
@@ -368,11 +552,17 @@ export function renderCharacterReport(props: CharacterReportProps): string {
             ${avatarNode}
             <div>
               <div class="summary-title">${escapeHtml(summary.name)}</div>
-              <div class="summary-sub">Lv.${summary.level} ｜ ${escapeHtml(jobLabel)}</div>
+              <div class="summary-meta">
+                <span class="summary-job">${escapeHtml(jobLabel)}</span>
+                <span class="summary-level"><strong>Lv.${escapeHtml(String(summary.level))}</strong>${
+                  expRate ? `<span>${escapeHtml(expRate)}</span>` : ""
+                }</span>
+              </div>
               <div class="summary-sub">${escapeHtml(regionLabel)} ｜ ${escapeHtml(worldLabel)}</div>
               <div class="summary-tags">
                 <span class="tag">${escapeHtml(profile.basic.guild ?? summary.guild ?? "無公會")}</span>
                 <span class="tag">人氣 ${escapeHtml(formatNumber(profile.basic.popularity ?? 0))}</span>
+                ${rankingTags}
               </div>
             </div>
           </div>
@@ -432,19 +622,30 @@ function renderArtifactLevel(union: UnionOverviewSummary | null | undefined, pro
 }
 
 function renderCombatStats(profile: MapleScouterProfile) {
+  const generalExtra = formatBossExtra(profile.combat.generalDamage300)
+  const hexaExtra = formatBossExtra(profile.combat.hexaDamage300)
   const items = [
     { label: "綜合戰力", value: formatTaiwanNumber(profile.combat.combatPower) },
-    { label: "一般（380）", value: formatNumber(profile.combat.generalDamage380 ?? 0) },
-    { label: "HEXA（380）", value: formatNumber(profile.combat.hexaDamage380 ?? 0) },
-    { label: "六轉加成", value: formatNumber(profile.combat.hexaBonus ?? 0) },
+    {
+      label: "一般（380）",
+      value: formatNumber(profile.combat.generalDamage380),
+      extra: generalExtra,
+    },
+    {
+      label: "HEXA（380）",
+      value: formatNumber(profile.combat.hexaDamage380),
+      extra: hexaExtra,
+    },
   ]
   return `<div class="combat-card">
     ${items
       .map(
         (item) =>
-          `<div class="combat-item"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(
-            item.value,
-          )}</strong></div>`,
+          `<div class="combat-item">
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.value)}</strong>
+            ${item.extra ? `<small>${escapeHtml(item.extra)}</small>` : ""}
+          </div>`,
       )
       .join("")}
   </div>`
@@ -462,18 +663,40 @@ function renderEquipmentGrid(items: MapleScouterEquipment[]) {
 function renderEquipmentCard(item: MapleScouterEquipment) {
   const icon = item.icon
     ? `<img src="${escapeHtml(item.icon)}" alt="${escapeHtml(item.name)}" />`
-    : '<div style="width:56px;height:56px;border-radius:14px;border:1px dashed #d5dcff;background:#f0f2ff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#95a0cf;">無圖</div>'
+    : '<div style="width:60px;height:60px;border-radius:14px;border:1px dashed #d5dcff;background:#f0f2ff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#95a0cf;">無圖</div>'
+  const metaTags = [
+    typeof item.starforce === "number" ? `★ ${item.starforce}` : "",
+    typeof item.scrolls === "number" ? `卷軸 ${item.scrolls}` : "",
+  ].filter(Boolean)
+  const meta = metaTags.length
+    ? `<div class="equip-meta">${metaTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>`
+    : ""
   const stats = (item.stats ?? [])
-    .map((stat) => `<div class="equip-stat-chip">${escapeHtml(`${stat.label} ${stat.value}`)}</div>`)
+    .map(
+      (stat) =>
+        `<div class="equip-stat">
+          <span class="equip-stat-label">${escapeHtml(stat.label)}</span>
+          <span class="equip-stat-value">${escapeHtml(stat.value)}</span>
+        </div>`,
+    )
     .join("")
-  const potentials = [
-    item.potentials ? `潛能：${escapeHtml(item.potentials.join(" / "))}` : "",
-    item.additionalPotentials ? `附加：${escapeHtml(item.additionalPotentials.join(" / "))}` : "",
-    item.flameSummary ? `火花：${escapeHtml(item.flameSummary)}` : "",
-  ]
-    .filter(Boolean)
-    .map((line) => `<div class="equip-note">${line}</div>`)
-    .join("")
+  const detailSections: string[] = []
+  if (item.potentials?.length) {
+    detailSections.push(renderEquipOptionBlock("潛能", item.potentials))
+  }
+  if (item.additionalPotentials?.length) {
+    detailSections.push(renderEquipOptionBlock("附加", item.additionalPotentials))
+  }
+  if (item.flameSummary) {
+    detailSections.push(
+      `<div class="equip-note">
+        <span class="equip-note-label">火花</span>
+        <div class="equip-note-lines"><span>${escapeHtml(item.flameSummary)}</span></div>
+      </div>`,
+    )
+  }
+  const detail =
+    detailSections.length > 0 ? detailSections.join("") : '<div class="equip-note equip-note-empty">未提供潛能資訊</div>'
 
   return `<div class="equip-card">
     <div class="equip-head">
@@ -481,10 +704,21 @@ function renderEquipmentCard(item: MapleScouterEquipment) {
       <div>
         <div class="equip-slot">${escapeHtml(item.slotLabel)}</div>
         <div class="equip-name">${escapeHtml(item.name)}</div>
+        ${meta}
       </div>
     </div>
-    <div class="equip-stats">${stats || '<span class="equip-stat-chip">暫無屬性</span>'}</div>
-    ${potentials || '<div class="equip-note">未提供潛能資訊</div>'}
+    <div class="equip-stats">${stats || '<div class="equip-stat-empty">暫無屬性</div>'}</div>
+    <div class="equip-detail">${detail}</div>
+  </div>`
+}
+
+function renderEquipOptionBlock(label: string, options: string[]): string {
+  if (!options.length) return ""
+  return `<div class="equip-note">
+    <span class="equip-note-label">${escapeHtml(label)}</span>
+    <div class="equip-note-lines">
+      ${options.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+    </div>
   </div>`
 }
 
@@ -494,16 +728,37 @@ function renderHexaNodes(nodes: MapleScouterHexaNode[]) {
     ${nodes
       .map((node) => {
         const percent = Math.min(100, Math.round((node.level / 30) * 100))
-        const icon = HEXA_ICONS[node.key] ?? HEXA_ICONS.default
+        const icon = node.icon ?? HEXA_ICONS[node.key] ?? HEXA_ICONS.default
+        const name = node.mainSkill ?? node.label
+        const subtitle = node.subSkills?.length ? renderHexaSubSkills(node) : ""
         return `<div>
           <div class="hexa-line">
-            <div class="hexa-icon"><img src="${icon}" alt="${escapeHtml(node.label)}" /></div>
+            <div class="hexa-icon"><img src="${escapeHtml(icon)}" alt="${escapeHtml(name)}" /></div>
             <div class="hexa-info">
-              <strong>${escapeHtml(node.label)}</strong>
+              <strong>${escapeHtml(name)}</strong>
               <span>Lv.${escapeHtml(String(node.level))}</span>
+              ${subtitle}
             </div>
           </div>
           <div class="hexa-bar"><span style="width:${percent}%"></span></div>
+        </div>`
+      })
+      .join("")}
+  </div>`
+}
+
+function renderHexaSubSkills(node: MapleScouterHexaNode) {
+  if (!node.subSkills || !node.subSkills.length) return ""
+  return `<div class="hexa-sub-list">
+    ${node.subSkills
+      .map((name, index) => {
+        const icon = node.subSkillIcons?.[index]
+        const iconNode = icon
+          ? `<img src="${escapeHtml(icon)}" alt="${escapeHtml(name)}" />`
+          : `<span class="hexa-sub-placeholder">${escapeHtml(name.slice(0, 2))}</span>`
+        return `<div class="hexa-sub-item">
+          ${iconNode}
+          <span>${escapeHtml(name)}</span>
         </div>`
       })
       .join("")}
@@ -574,8 +829,11 @@ function buildChartBars(series: ExperiencePoint[]) {
   return series
     .map((item) => {
       const height = Math.max(6, Math.round(((item.gain ?? 0) / maxGain) * 100))
-      return `<div class="exp-bar" style="height:${height}%">
+      return `<div class="exp-bar">
         <small>${escapeHtml(formatCompactNumber(item.gain))}</small>
+        <div class="exp-bar-track">
+          <div class="exp-bar-fill" style="--bar-height:${height}%;"></div>
+        </div>
         <span>${escapeHtml(item.date.slice(5))}</span>
       </div>`
     })
@@ -615,6 +873,32 @@ function formatTaiwanNumber(value: number | string | null | undefined): string {
     }
   }
   return formatNumber(numeric)
+}
+
+function formatBossExtra(value?: number | null): string | null {
+  if (value === null || value === undefined) return null
+  return `300：${formatNumber(value)}`
+}
+
+function formatExpRate(rate?: string | number | null): string | null {
+  if (rate === null || rate === undefined) return null
+  const numeric = typeof rate === "string" ? Number(rate) : rate
+  if (!Number.isFinite(numeric)) return null
+  return `${numeric.toFixed(2).replace(/\.0+$/, "")}%`
+}
+
+function buildRankingTags(basic: MapleScouterProfile["basic"]): string {
+  const entries: string[] = []
+  if (basic.characterRanking) {
+    entries.push(`綜合 #${formatNumber(basic.characterRanking)}`)
+  }
+  if (basic.worldRanking) {
+    entries.push(`伺服器 #${formatNumber(basic.worldRanking)}`)
+  }
+  if (basic.classRanking) {
+    entries.push(`職業 #${formatNumber(basic.classRanking)}`)
+  }
+  return entries.map((text) => `<span class="tag tag-rank">${escapeHtml(text)}</span>`).join("")
 }
 
 function transformGrade(grade?: string) {
