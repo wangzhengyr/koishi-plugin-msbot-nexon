@@ -16,7 +16,6 @@ export interface ServiceOptions {
   timeout: number
   experienceDays: number
   cache: CacheOptions
-  allowBinding: boolean
   debug: boolean
 }
 
@@ -74,9 +73,6 @@ export const Config: Schema<Config> = Schema.object({
     maxSize: 512,
     resetHour: 4,
   }),
-  allowBinding: Schema.boolean()
-    .default(true)
-    .description("允许用户绑定默认角色，便于免参数查询"),
   debug: Schema.boolean()
     .default(false)
     .description("输出详细调试日志（包含请求参数、响应片段）"),

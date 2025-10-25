@@ -22,9 +22,9 @@ declare module "koishi" {
 export class UserHistoryStore {
   private readonly logger = new Logger("msbot-nexon:binding")
 
-  constructor(private readonly ctx: Context, private readonly allowBinding: boolean) {
+  constructor(private readonly ctx: Context) {
     const model = ctx.model
-    if (this.allowBinding && model) {
+    if (model) {
       model.extend(
         "mapleBinding",
         {
@@ -43,13 +43,7 @@ export class UserHistoryStore {
     }
   }
 
-  canPersist(): boolean {
-    return this.allowBinding && Boolean(this.ctx.database)
-  }
-
   async remember(userId: string, platform: string, region: MapleRegion, character: string) {
-    if (!this.canPersist()) return
-
     const database = this.ctx.database!
     const updatedAt = Math.floor(Date.now() / 1000)
 
@@ -80,8 +74,6 @@ export class UserHistoryStore {
   }
 
   async lookup(userId: string, platform: string, region: MapleRegion): Promise<UserHistoryRecord | undefined> {
-    if (!this.canPersist()) return undefined
-
     const database = this.ctx.database!
     try {
       const rows = await database.get("mapleBinding", {
@@ -136,7 +128,7 @@ export async function resolveCharacterName(
     return {
       ok: true,
       name: normalized,
-      shouldPersist: Boolean(userId && platform && store.canPersist()),
+      shouldPersist: Boolean(userId && platform),
       userId,
       platform,
     }
@@ -171,7 +163,7 @@ export async function resolveCharacterName(
   return {
     ok: true,
     name: candidate,
-    shouldPersist: store.canPersist(),
+    shouldPersist: true,
     userId,
     platform,
   }

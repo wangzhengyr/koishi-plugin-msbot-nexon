@@ -12,6 +12,11 @@ import { InMemoryCache } from "./api/cache"
 export const name = "msbot-nexon"
 export const Config = ConfigSchema
 
+export const inject = {
+  required: ['database'],
+  optional: ['puppeteer'],
+}
+
 const logger = new Logger(name)
 
 export function apply(ctx: Context, rawConfig: PluginConfig) {
@@ -20,7 +25,7 @@ export function apply(ctx: Context, rawConfig: PluginConfig) {
     throw new Error("请在插件配置中填写 Nexon Open API 密钥")
   }
 
-  const history = new UserHistoryStore(ctx, config.allowBinding)
+  const history = new UserHistoryStore(ctx)
   const client = new MapleClient({ options: config })
 
   const imageCache = config.cache.enabled
@@ -34,9 +39,7 @@ export function apply(ctx: Context, rawConfig: PluginConfig) {
     scheduleDailyCacheReset(ctx, imageCache, config.cache.resetHour)
   }
 
-  if (history.canPersist()) {
-    registerBindCommand({ ctx, config, client, history })
-  }
+  registerBindCommand({ ctx, config, client, history })
 
   registerInfoCommand({ ctx, config, client, history, imageCache })
   registerRankCommand({ ctx, config, client, history })
