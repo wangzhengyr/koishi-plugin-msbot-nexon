@@ -244,7 +244,8 @@ export class MapleClient {
 
   private async fetchExperienceHistory(ocid: string): Promise<ExperiencePoint[]> {
     const snapshots: Array<{ date: string; level: number; exp: number }> = []
-    for (let offset = this.experienceDays; offset >= 1; offset--) {
+    const range = this.experienceDays + 1
+    for (let offset = range; offset >= 1; offset--) {
       const options = this.getDateOptions(offset)
       try {
         const dto = await this.api.getCharacterBasic(ocid, options as { year: number; month: number; day: number })
@@ -290,6 +291,9 @@ export class MapleClient {
       }
     }
     const series = buildExperienceSeries(snapshots)
+    if (series.length > this.experienceDays) {
+      return series.slice(-this.experienceDays)
+    }
     return series
   }
 

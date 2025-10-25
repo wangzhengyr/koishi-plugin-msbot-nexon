@@ -2,7 +2,6 @@
 import {
   MapleScouterProfile,
   MapleScouterEquipment,
-  MapleScouterEquipmentStat,
   MapleScouterHexaNode,
   MapleScouterPotentialLine,
   MapleScouterSymbol,
@@ -33,9 +32,6 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   const expRate = formatExpRate(summary.expRate ?? profile.basic.expRate)
   const rankingTags = buildRankingTags(profile.basic)
   const jobName = summary.job ?? "未知職業"
-  const jobDetailBadge = summary.jobDetail
-    ? `<span class="summary-job-detail">${escapeHtml(summary.jobDetail)}</span>`
-    : ""
 
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -57,19 +53,17 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   }
   .report {
     display: grid;
-    grid-template-columns: 360px minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
+    grid-template-columns: 360px minmax(560px, 1fr) 360px;
+    gap: 20px;
+    align-items: stretch;
   }
-  .left-column {
+  .column {
     display: flex;
     flex-direction: column;
     gap: 18px;
   }
-  .main-column {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
+  .column-center {
+    min-height: 100%;
   }
   .card {
     background: #fff;
@@ -111,6 +105,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     font-size: 24px;
     font-weight: 700;
     margin-bottom: 4px;
+    word-break: break-all;
   }
   .summary-meta {
     display: flex;
@@ -125,7 +120,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     max-width: 100%;
   }
   .summary-job {
@@ -133,22 +128,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     border-radius: 999px;
     background: rgba(68, 93, 255, 0.12);
     color: #445dff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 72%;
-  }
-  .summary-job-detail {
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: rgba(68, 93, 255, 0.08);
-    color: #4b5db8;
-    font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 60%;
+    white-space: normal;
   }
   .summary-level {
     display: flex;
@@ -242,7 +222,8 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   }
   .info-card h3,
   .hexa-card h3,
-  .equip-card-board h3 {
+  .equip-card-board h3,
+  .exp-card h3 {
     margin: 0 0 14px;
     font-size: 16px;
     color: #3342a3;
@@ -250,45 +231,36 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   .equip-card-board {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
+    margin-top: 26px;
   }
   .equip-card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-  }
-  @media (max-width: 1500px) {
-    .equip-card-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-  @media (max-width: 1100px) {
-    .equip-card-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
   }
   .equip-card {
-    border: 1px solid #ebefff;
-    border-radius: 22px;
-    padding: 20px;
-    background: #fbfcff;
+    border: 1px solid #e1e6ff;
+    border-radius: 18px;
+    padding: 14px 16px;
+    background: #fff;
     display: grid;
-    grid-template-columns: 94px 1fr;
-    gap: 16px;
+    grid-template-columns: 72px 1fr;
+    gap: 12px;
     height: 100%;
   }
-  .equip-head {
+  .equip-media {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
   }
-  .equip-head img {
+  .equip-media img {
     width: 72px;
     height: 72px;
-    border-radius: 18px;
+    border-radius: 16px;
     border: 1px solid #dde3ff;
-    background: #fff;
+    background: #fdfdff;
     object-fit: cover;
   }
   .equip-slot {
@@ -297,16 +269,29 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     text-transform: uppercase;
     text-align: center;
   }
+  .equip-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .equip-title-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
   .equip-name {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     color: #293361;
+    flex: 1;
+    line-height: 1.3;
   }
   .equip-badges {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: flex-end;
+    margin-left: auto;
   }
   .equip-badge {
     display: inline-flex;
@@ -323,20 +308,15 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     width: 14px;
     height: 14px;
   }
-  .equip-body {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
   .equip-detail-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
   }
   .equip-column {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
   }
   .equip-note-label {
     font-weight: 600;
@@ -448,18 +428,23 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     color: #9aa3cf;
   }
   .exp-card {
-    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    height: 100%;
   }
   .chart-area {
     position: relative;
-    height: 260px;
-    padding: 32px 24px 24px;
+    height: 320px;
+    min-height: 320px;
+    padding: 28px 24px 24px;
     display: flex;
     align-items: flex-end;
-    gap: 18px;
-    border-radius: 20px;
-    border: 1px solid #dde2ff;
-    background: linear-gradient(180deg, rgba(94, 107, 255, 0.12), rgba(94, 107, 255, 0.02));
+    gap: 22px;
+    border-radius: 24px;
+    border: 1px solid #cdd4ff;
+    background: linear-gradient(190deg, rgba(94, 107, 255, 0.2), rgba(94, 107, 255, 0.05));
+    box-shadow: inset 0 0 40px rgba(90, 108, 255, 0.08);
     overflow: hidden;
   }
   .chart-area::before {
@@ -490,13 +475,13 @@ export function renderCharacterReport(props: CharacterReportProps): string {
   .exp-bar {
     flex: 1 0 32px;
     min-width: 32px;
-    max-width: 68px;
+    max-width: 64px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-end;
     gap: 10px;
-    height: 180px;
+    height: 220px;
   }
   .exp-bar small {
     font-size: 11px;
@@ -516,7 +501,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
     overflow: hidden;
     display: flex;
     align-items: flex-end;
-    min-height: 140px;
+    min-height: 180px;
   }
   .exp-bar-fill {
     width: 100%;
@@ -535,7 +520,7 @@ export function renderCharacterReport(props: CharacterReportProps): string {
 <body>
   <div id="app">
     <div class="report">
-      <div class="left-column">
+      <div class="column column-left">
         <section class="card summary-card">
           <div class="avatar-box">
             ${avatarNode}
@@ -544,7 +529,6 @@ export function renderCharacterReport(props: CharacterReportProps): string {
               <div class="summary-meta">
                 <div class="summary-jobline">
                   <span class="summary-job">${escapeHtml(jobName)}</span>
-                  ${jobDetailBadge}
                 </div>
                 <div class="summary-levelline">
                   <span class="summary-level"><strong>Lv.${escapeHtml(String(summary.level))}</strong>${
@@ -572,29 +556,31 @@ export function renderCharacterReport(props: CharacterReportProps): string {
           </div>
           ${renderCombatStats(profile)}
         </section>
-        <section class="card hexa-card">
-          <h3>六轉核心</h3>
-          ${hexaList}
-        </section>
         <section class="card info-card">
           <h3>潛能 / 能力</h3>
           ${potentialList}
+        </section>
+      </div>
+      <div class="column column-center">
+        <section class="card exp-card">
+          <h3>近期經驗趨勢（7 日）</h3>
+          ${experienceChart}
+        </section>
+      </div>
+      <div class="column column-right">
+        <section class="card hexa-card">
+          <h3>六轉核心</h3>
+          ${hexaList}
         </section>
         <section class="card info-card">
           <h3>符文進度</h3>
           ${symbolGroups}
         </section>
       </div>
-      <div class="main-column">
-        <section class="card equip-card-board">
-          <h3>裝備概覽</h3>
-          ${equipmentGrid}
-        </section>
-      </div>
     </div>
-    <section class="card exp-card">
-      <h3 style="margin:0 0 16px;font-size:18px;color:#3143a7;">近期經驗趨勢</h3>
-      ${experienceChart}
+    <section class="card equip-card-board">
+      <h3>裝備概覽</h3>
+      ${equipmentGrid}
     </section>
   </div>
 </body>
@@ -659,7 +645,7 @@ function renderEquipmentGrid(items: MapleScouterEquipment[]) {
 function renderEquipmentCard(item: MapleScouterEquipment) {
   const icon = item.icon
     ? `<img src="${escapeHtml(item.icon)}" alt="${escapeHtml(item.name)}" />`
-    : '<div style="width:72px;height:72px;border-radius:18px;border:1px dashed #d5dcff;background:#f0f2ff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#95a0cf;">無圖</div>'
+    : '<div style="width:72px;height:72px;border-radius:16px;border:1px dashed #d5dcff;background:#f0f2ff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#95a0cf;">無圖</div>'
   const badges: string[] = []
   if (typeof item.starforce === "number") {
     badges.push(
@@ -674,17 +660,6 @@ function renderEquipmentCard(item: MapleScouterEquipment) {
   const meta = badges.length ? `<div class="equip-badges">${badges.join("")}</div>` : ""
 
   const detailColumns: string[] = []
-  if (item.stats?.length) {
-    detailColumns.push(renderEquipStatColumn(item.stats))
-  }
-  if (item.flameSummary) {
-    detailColumns.push(
-      `<div class="equip-column">
-        <span class="equip-note-label">火花</span>
-        <div class="equip-chip-list"><div class="equip-chip">${escapeHtml(item.flameSummary)}</div></div>
-      </div>`,
-    )
-  }
   if (item.potentials?.length) {
     detailColumns.push(renderEquipOptionColumn("潛能", item.potentials))
   }
@@ -697,26 +672,17 @@ function renderEquipmentCard(item: MapleScouterEquipment) {
       : '<div class="equip-note-empty">暫無潛能資訊</div>'
 
   return `<div class="equip-card">
-    <div class="equip-head">
+    <div class="equip-media">
       ${icon}
       <div class="equip-slot">${escapeHtml(item.slotLabel)}</div>
-      ${meta}
     </div>
-    <div class="equip-body">
-      <div class="equip-name">${escapeHtml(item.name)}</div>
+    <div class="equip-content">
+      <div class="equip-title-row">
+        <div class="equip-name">${escapeHtml(item.name)}</div>
+        ${meta}
+      </div>
       ${detail}
     </div>
-  </div>`
-}
-
-function renderEquipStatColumn(stats: MapleScouterEquipmentStat[]): string {
-  if (!stats.length) return ""
-  const rows = stats
-    .map((stat) => `<div class="equip-chip">${escapeHtml(stat.label)} ${escapeHtml(stat.value)}</div>`)
-    .join("")
-  return `<div class="equip-column">
-    <span class="equip-note-label">總屬性</span>
-    <div class="equip-chip-list">${rows}</div>
   </div>`
 }
 
