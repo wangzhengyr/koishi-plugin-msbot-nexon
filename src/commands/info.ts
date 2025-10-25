@@ -45,7 +45,7 @@ export function registerInfoCommand(deps: InfoCommandDeps) {
       if (isResolveFailure(resolved)) {
         const reason = resolved.reason
         if (reason === "missing-name") {
-          return "请直接提供角色名，例如：tms/联盟查询 青螃蟹GM"
+          return "请直接提供角色名，例如：吳獨秀m"
         }
         if (reason === "timeout") {
           return "等待输入超时，请稍后重试。"

@@ -15,8 +15,8 @@ export const name = "msbot-nexon"
 export const Config = ConfigSchema
 
 export const inject = {
-  required: ['database'],
-  optional: ['puppeteer'],
+  required: ['database', 'puppeteer'],
+  optional: [],
 }
 
 const logger = new Logger(name)
@@ -67,8 +67,8 @@ export function apply(ctx: Context, rawConfig: PluginConfig) {
   registerBindCommand({ ctx, config, client, history })
 
   registerInfoCommand({ ctx, config, client, history, imageCache, scouter: scouterClient })
-  registerRankCommand({ ctx, config, client, history })
-  registerEquipCommand({ ctx, config, client, history })
+  // registerRankCommand({ ctx, config, client, history })
+  // registerEquipCommand({ ctx, config, client, history })
 
   logger.info(
     "已启用冒险岛查询插件，地区：%s，缓存：%s",

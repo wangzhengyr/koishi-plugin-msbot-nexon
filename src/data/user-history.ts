@@ -149,7 +149,7 @@ export async function resolveCharacterName(
     }
   }
 
-  await session.send("请提供要查询的角色名，例如：tms/联盟查询 青螃蟹GM")
+  await session.send("当前未绑定角色，请在下一条消息输入要绑定的角色名")
   const answer = await session.prompt(60_000)
   if (!answer) {
     return { ok: false, reason: "timeout" }
